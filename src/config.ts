@@ -72,8 +72,11 @@ export function loadConfig(): Config {
 
   return {
     home,
-    host: process.env.WATCHDOG_HOST?.trim() || process.env.HOST || "127.0.0.1",
-    port: envInt("WATCHDOG_PORT", envInt("PORT", 4230)),
+    // 只认 WATCHDOG_HOST/WATCHDOG_PORT：不回落到通用 HOST/PORT，避免继承宿主环境
+    // （本机 env 里就有 HOST=0.0.0.0 / PORT=4211）而把无鉴权 API 暴露出去、
+    // 或去抢被监控应用的端口。自启动 unit 里也显式写死了这两个值。
+    host: process.env.WATCHDOG_HOST?.trim() || "127.0.0.1",
+    port: envInt("WATCHDOG_PORT", 4230),
     dataDir,
     dbPath: path.join(dataDir, "watchdog.sqlite"),
     logDir,

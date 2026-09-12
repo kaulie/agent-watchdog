@@ -1,8 +1,8 @@
 {
   "name": "agent-watchdog",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Independent service supervision & monitoring control plane. Registry-driven health probes, state machine, auto-remediation and deploy-safe pause.",
+  "description": "Independent service supervision & monitoring control plane. Registry-driven health probes, state machine, auto-remediation and deploy-safe pause. Runs as its own HTTP service with OS-level autostart (launchd / systemd --user).",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -10,7 +10,10 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "autostart:install": "bash scripts/install-autostart.sh",
+    "autostart:remove": "bash scripts/uninstall-autostart.sh",
+    "autostart:status": "bash scripts/autostart-status.sh"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
