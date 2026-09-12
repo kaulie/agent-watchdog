@@ -1,0 +1,15 @@
+# Local install / runtime artifacts — never commit
+node_modules/
+dist/
+outputs/
+packages/
+data/
+logs/
+run/
+watchdog.pid
+srv/*.log
+srv/*.pid
+src-tree/
+.DS_Store
+*.swp
+*.tsbuildinfo
