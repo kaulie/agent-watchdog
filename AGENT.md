@@ -24,18 +24,31 @@
 3. **自愈闸门不可绕过**：pause → cooldown → rate limit → in-flight 去重，四道闸门是历史故障（重启风暴 / EADDRINUSE）的修复，改动需配套测试。
 4. **pause 兼容旧发版标记**：`<WATCHDOG_LEGACY_DEPLOY_DIR>/<serviceId>/ops/watchdog-pause-until` 必须继续被识别。
 5. **独立进程**：不要在其它服务的进程/目录里同步执行本服务的启停；也不要让本服务同步重启它自己。
+6. **自启动单一所有者**：注册 OS 级自启动（launchd/systemd）后，进程生命周期归 OS 管理器；
+   `start.sh` / `stop.sh` / `restart.sh` 必须继续走 `scripts/lib-autostart.sh` 委派，
+   不得再 `nohup` 起第二份。unit 的路径/label/env 只在 `src/autostart.ts` 定义，
+   shell 侧通过 `dist/autostart-cli.js` 读取，**不要**在 shell 里复制这些常量。
+7. **环境隔离**：host/port 只从 `WATCHDOG_HOST` / `WATCHDOG_PORT` 取，**禁止**回落通用
+   `HOST` / `PORT`。宿主机（以及发版 shell）里 `PORT=4211`、`HOST=0.0.0.0` 很常见，
+   回落会导致 watchdog 抢/影子被监控应用的端口、或把无鉴权 API 暴露到局域网。
+   回归测试见 `test/config.test.ts`。
+
 
 ## 开发流程
 
 1. 在 task workspace 改代码，本地自测（`npm run typecheck` + `npm test`）。
-2. 端口用 **4230**；本地自测为避免冲突可换端口（例如 `WATCHDOG_PORT=4239`）。
+2. 端口用 **4230**；本地自测为避免冲突可换端口（例如 `WATCHDOG_PORT=4239`），
+   且**不要**用自测配置去注册系统自启动（如确需验证，用
+   `WATCHDOG_AUTOSTART_NAME=ai.hermes.agent-watchdog.dev` + 独立 `WATCHDOG_HOME`，
+   验证完 `scripts/uninstall-autostart.sh` 清理）。
 3. `git commit` → `git push -u origin HEAD` → `gh pr create`，回写 `prUrl`。
 4. **不要** merge PR、不要擅自 `release.sh` / `deploy.sh`（除非用户明确要求）。
 
 ## 质量门
 
 - `npm run typecheck` 必须通过。
-- `npm test` 必须全绿；新增引擎/策略行为需补 `test/engine.test.ts` 用例。
+- `npm test` 必须全绿；新增引擎/策略行为需补 `test/engine.test.ts` 用例，
+  改动自启动 unit 渲染/路径约定需补 `test/autostart.test.ts`。
 - 发版包：`./build.sh` 生成 `outputs/`（含 `dist/` 与生产依赖）。
 
 ## 安全
