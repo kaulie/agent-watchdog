@@ -2,7 +2,7 @@
 # Show the watchdog's own health plus the status of every monitored service.
 set -euo pipefail
 
-PORT="${WATCHDOG_PORT:-${PORT:-4230}}"
+PORT="${SERVICE_PORT:-${WATCHDOG_PORT:-4230}}"
 HOST="${WATCHDOG_HOST:-127.0.0.1}"
 BASE="http://${HOST}:${PORT}"
 

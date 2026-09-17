@@ -39,4 +39,4 @@ echo "[install] npm install + build..."
 echo "[install] (re)starting service..."
 WATCHDOG_HOME="${HOME_DIR}" "${HOME_DIR}/scripts/restart.sh"
 
-echo "[install] done — API http://127.0.0.1:${WATCHDOG_PORT:-4230}/health"
+echo "[install] done — API http://127.0.0.1:${SERVICE_PORT:-${WATCHDOG_PORT:-4230}}/health"

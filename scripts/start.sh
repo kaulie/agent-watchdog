@@ -5,7 +5,7 @@ set -euo pipefail
 HOME_DIR="${WATCHDOG_HOME:-${HOME}/runtime/agent-watchdog}"
 PID_FILE="${HOME_DIR}/watchdog.pid"
 LOG_FILE="${HOME_DIR}/logs/watchdog.log"
-PORT="${WATCHDOG_PORT:-${PORT:-4230}}"
+PORT="${SERVICE_PORT:-${WATCHDOG_PORT:-4230}}"
 HOST="${WATCHDOG_HOST:-127.0.0.1}"
 HEALTH_URL="http://${HOST}:${PORT}/health"
 
@@ -37,6 +37,7 @@ fi
 
 cd "${HOME_DIR}"
 export WATCHDOG_HOME="${HOME_DIR}"
+export SERVICE_PORT="${PORT}"
 export WATCHDOG_PORT="${PORT}"
 export WATCHDOG_HOST="${HOST}"
 [ -n "${APP_VERSION}" ] && export WATCHDOG_VERSION="${APP_VERSION}"

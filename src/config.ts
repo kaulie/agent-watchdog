@@ -73,7 +73,10 @@ export function loadConfig(): Config {
   return {
     home,
     host: process.env.WATCHDOG_HOST?.trim() || process.env.HOST || "127.0.0.1",
-    port: envInt("WATCHDOG_PORT", envInt("PORT", 4230)),
+    // Prefer SERVICE_PORT (deploy/control-plane convention), then WATCHDOG_PORT,
+    // then default 4230. Do not fall back to generic PORT — host env often has
+    // PORT=4211 for web-cursor and would collide.
+    port: envInt("SERVICE_PORT", envInt("WATCHDOG_PORT", 4230)),
     dataDir,
     dbPath: path.join(dataDir, "watchdog.sqlite"),
     logDir,
