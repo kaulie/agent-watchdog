@@ -213,7 +213,8 @@ JSON 数组（元素为部分契约），启动时按需写入/更新，不需�
 | 部署控制面 | 4220 | `~/runtime/agent-control-plane-deployment` |
 | **本服务** | **4230** | `~/runtime/agent-watchdog` |
 
-环境变量：`WATCHDOG_HOME`、`WATCHDOG_HOST`、`WATCHDOG_PORT`、
+环境变量：`WATCHDOG_HOME`、`WATCHDOG_HOST`、`SERVICE_PORT`（优先）/
+`WATCHDOG_PORT`（其次，默认 `4230`）、
 `WATCHDOG_DEFAULT_*`（探针/策略默认值）、`WATCHDOG_REMEDIATION_TIMEOUT_SEC`、
 `WATCHDOG_RECORD_PROBES`（默认关，开启后每次探活都落库）、
 `WATCHDOG_LEGACY_DEPLOY_DIR`（默认 `~/deployment`）、`WATCHDOG_SEED_FILE`、

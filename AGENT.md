@@ -28,7 +28,7 @@
 ## 开发流程
 
 1. 在 task workspace 改代码，本地自测（`npm run typecheck` + `npm test`）。
-2. 端口用 **4230**；本地自测为避免冲突可换端口（例如 `WATCHDOG_PORT=4239`）。
+2. 端口用 **4230**；本地自测为避免冲突可换端口（例如 `SERVICE_PORT=4239` 或 `WATCHDOG_PORT=4239`）。
 3. `git commit` → `git push -u origin HEAD` → `gh pr create`，回写 `prUrl`。
 4. **不要** merge PR、不要擅自 `release.sh` / `deploy.sh`（除非用户明确要求）。
 

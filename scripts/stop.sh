@@ -4,7 +4,7 @@ set -euo pipefail
 
 HOME_DIR="${WATCHDOG_HOME:-${HOME}/runtime/agent-watchdog}"
 PID_FILE="${HOME_DIR}/watchdog.pid"
-PORT="${WATCHDOG_PORT:-${PORT:-4230}}"
+PORT="${SERVICE_PORT:-${WATCHDOG_PORT:-4230}}"
 
 stopped=0
 
