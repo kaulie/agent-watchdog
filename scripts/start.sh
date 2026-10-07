@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Start the independent watchdog service (no build here; use install.sh / build.sh).
+# One-shot daemonizer for the deployment platform. LaunchAgent must use
+# run-service.sh instead (foreground exec).
 set -euo pipefail
 
 HOME_DIR="${WATCHDOG_HOME:-${HOME}/runtime/agent-watchdog}"
