@@ -105,7 +105,8 @@ src/
   seed.ts       注册表 seed（web-cursor + 可选 JSON seed 文件）
   index.ts      进程启动 / 优雅退出
 test/           node:test 单元测试（契约 / 存储 / 引擎 / pause）
-scripts/        start.sh stop.sh restart.sh status.sh（运行时启停）
+scripts/        start.sh stop.sh restart.sh status.sh（部署平台 / 人工启停，后台 nohup）
+                run-service.sh（LaunchAgent 前台常驻：exec node，勿改成 restart）
 install.sh      安装到 ~/runtime/agent-watchdog 并重启
 build.sh        生成 outputs/（供部署控制面 release 使用）
 ```
@@ -122,6 +123,9 @@ cd agent-watchdog
 ~/runtime/agent-watchdog/scripts/stop.sh
 ~/runtime/agent-watchdog/scripts/start.sh
 ~/runtime/agent-watchdog/scripts/restart.sh
+
+开机由 LaunchAgent `ai.hermes.agent-watchdog` 跑 `scripts/run-service.sh`
+（前台 `exec node`，配合 KeepAlive）。发版仍走部署平台契约的 `restart.sh`。
 ```
 
 开发：
