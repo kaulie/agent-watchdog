@@ -188,9 +188,10 @@ curl -sS -X POST http://127.0.0.1:4230/api/pause \
 `agent-control-plane`（runtime 仍是 `~/runtime/web-cursor`）。旧的
 `web-cursor` 行会迁成 `agent-control-plane` 并禁用。
 
-**加服务（P0）**：把它的 `serviceId` 加进 `WATCHDOG_SYNC_ALLOW`，并保证
-部署平台上有 `port` / `healthUrl` / `runtimeDir` / `startCmd`、inventory
-含 `machineId=local`。`WATCHDOG_SYNC_ALLOW=*` 监督所有合格本机服务。
+**加服务**：部署契约勾选 `supervise`（P1）后对账会直接纳入；未设该字段时
+仍看 `WATCHDOG_SYNC_ALLOW`。还要有 `port` / `healthUrl` / `runtimeDir` /
+`startCmd`，且 inventory 含 `machineId=local`。`WATCHDOG_SYNC_ALLOW=*` 监督
+所有未显式关闭的本机服务。
 
 **临时钉住**：`PUT /api/services/:id` 带 `"pinned": true`，同步不会覆盖。
 未钉住的手动 PUT 下次对账会被部署契约盖掉。
