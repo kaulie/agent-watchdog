@@ -15,6 +15,8 @@ export interface DeployService {
   stopCmd?: string;
   restartCmd?: string;
   configured?: boolean;
+  /** When set, overrides the watchdog allowlist: true=supervise, false=skip. */
+  supervise?: boolean;
 }
 
 export interface InventoryMachine {
@@ -190,7 +192,11 @@ export function selectDesired(
       skipped.push({ serviceId: id, reason: "excluded (self or denylist)" });
       continue;
     }
-    if (allow && !allow.has(id)) {
+    if (svc.supervise === false) {
+      skipped.push({ serviceId: id, reason: "supervise disabled" });
+      continue;
+    }
+    if (svc.supervise !== true && allow && !allow.has(id)) {
       skipped.push({ serviceId: id, reason: "not on allowlist" });
       continue;
     }

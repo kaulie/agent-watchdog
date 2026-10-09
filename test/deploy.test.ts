@@ -123,6 +123,41 @@ test("selectDesired * still excludes watchdog", () => {
   assert.ok(!desired.some((d) => d.serviceId === "watchdog"));
 });
 
+test("selectDesired honors explicit supervise over the allowlist", () => {
+  const cat: DeployCatalog = {
+    services: [
+      {
+        serviceId: "event-center",
+        runtimeDir: "/tmp/ec",
+        healthUrl: "/health",
+        port: 4438,
+        startCmd: "bash scripts/start.sh",
+        configured: true,
+        supervise: true,
+      },
+      {
+        serviceId: "agent-control-plane",
+        runtimeDir: "/tmp/acp",
+        healthUrl: "/health",
+        port: 4211,
+        startCmd: "bash scripts/start.sh",
+        configured: true,
+        supervise: false,
+      },
+    ],
+    inventory: null,
+  };
+  const { desired, skipped } = selectDesired(cat, {
+    allow: ["agent-control-plane"],
+    exclude: ["watchdog"],
+  });
+  assert.deepEqual(
+    desired.map((d) => d.serviceId),
+    ["event-center"],
+  );
+  assert.ok(skipped.some((s) => s.reason === "supervise disabled"));
+});
+
 test("selectDesired skips remote-only and incomplete rows", () => {
   const { desired, skipped } = selectDesired(
     {
