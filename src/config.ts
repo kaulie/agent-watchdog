@@ -71,7 +71,11 @@ export const DEFAULT_SYNC_BOOTSTRAP = [
   "agent-control-plane",
 ] as const;
 
-export const DEFAULT_SYNC_EXCLUDE = ["watchdog", "agent-watchdog"] as const;
+export const DEFAULT_SYNC_EXCLUDE = [
+  "watchdog",
+  "agent-watchdog",
+  "acp-upgrader",
+] as const;
 
 export function expandHome(p: string): string {
   if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
