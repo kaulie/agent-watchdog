@@ -2,10 +2,10 @@
 
 **独立服务监督控制面（independent service supervision control plane）。**
 
-一个与业务应用、与部署控制面都**完全解耦**的常驻服务：按注册表（service
-registry）持续探活其它服务，驱动一个小型状态机，并在服务 DOWN 时按契约执行
-自愈（start / restart）。当前默认只托管 **web-cursor**，但架构上以「注册表 +
-可插拔探针」实现，新增被监控服务只是**加一条契约数据**，不需要改代码。
+一个与业务应用、与部署控制面都**完全解耦**的常驻服务：从部署平台 `:4220`
+拉取本机服务契约，持续探活并在 DOWN 时按契约自愈（start / restart）。
+名单以部署契约为准，SQLite 只缓存上次对账结果和运行态；**不要**再靠
+`PUT /api/services` 当目录的主入口。
 
 ```
                        ┌──────────────────────────────┐
@@ -17,8 +17,8 @@ registry）持续探活其它服务，驱动一个小型状态机，并在服务
                                        │ remediate (start/restart via contract)
                                        ▼
                     ┌──────────────────────────────────────┐
-                    │ web-cursor runtime  (HTTP :4211)      │
-                    │ ~/runtime/web-cursor/scripts/*.sh     │
+                    │ 本机 runtime（agent-control-plane /   │
+                    │ registry / brain / gateway / …）      │
                     └──────────────────────────────────────┘
 ```
 
@@ -40,7 +40,7 @@ registry）持续探活其它服务，驱动一个小型状态机，并在服务
 - **注册表驱动**：所有行为都写在 `services` 契约表里，天然支持多服务。
 - **有审计**：状态迁移、自愈动作、暂停都落库，可回溯“什么时候谁把服务拉起来的”。
 
-> 当前范围：仅托管 `web-cursor`（首个 seed 契约）。多服务能力已经具备，追加服务见下文「新增被监控服务」。
+> 默认监督：`agent-control-plane`、`service_registry`、`agent-control-plane-deployment`、`home-agent-brain`、`home-agent-gateway`。用 `WATCHDOG_SYNC_ALLOW` 增减；`*` 表示所有本机已配置服务（仍排除 watchdog 自己）。
 
 ## 概念模型
 
@@ -50,7 +50,7 @@ registry）持续探活其它服务，驱动一个小型状态机，并在服务
 
 | 字段组 | 字段 | 说明 |
 |---|---|---|
-| 标识 | `serviceId` `name` `group` `enabled` | `enabled=false` 时既不探活也不自愈 |
+| 标识 | `serviceId` `name` `group` `enabled` `source` `pinned` | `enabled=false` 时既不探活也不自愈；`source=deploy-sync` 由 :4220 对账；`pinned` 钉住后同步不改 |
 | 探针 | `probeType` `probeTarget` `probeTimeoutMs` `expectStatus` `expectBodyContains` | `http`：GET URL，校验状态码/响应体；`command`：shell 命令，退出码 0 = 健康 |
 | 节奏 | `intervalSec` | 探活周期 |
 | 自愈 | `remediation` `runtimeDir` `startCmd` `restartCmd` `stopCmd` | `remediation` ∈ `start/restart/stop/none` |
@@ -102,9 +102,11 @@ src/
   pause.ts      pause 仲裁（全局 / 服务级 / 旧发版标记）
   engine.ts     监控引擎：调度 + 状态机 + 自愈闸门（可注入 probe/remediate，便于测试）
   routes.ts     REST API
-  seed.ts       注册表 seed（web-cursor + 可选 JSON seed 文件）
+  seed.ts       空库 bootstrap + web-cursor → agent-control-plane 迁移
+  deploy.ts     拉取 :4220 目录并映射成本机契约
+  sync.ts       定时对账（失败保留上次缓存）
   index.ts      进程启动 / 优雅退出
-test/           node:test 单元测试（契约 / 存储 / 引擎 / pause）
+test/           node:test 单元测试（契约 / 存储 / 引擎 / pause / sync）
 scripts/        start.sh stop.sh restart.sh status.sh（部署平台 / 人工启停，后台 nohup）
                 run-service.sh（LaunchAgent 前台常驻：exec node，勿改成 restart）
 install.sh      安装到 ~/runtime/agent-watchdog 并重启
@@ -133,7 +135,7 @@ cd agent-watchdog
 ```bash
 npm install
 npm run typecheck
-npm test            # node:test，19 个用例
+npm test            # node:test
 npm run dev         # tsx watch
 ```
 
@@ -156,48 +158,44 @@ npm run dev         # tsx watch
 | GET | `/api/pause` | 当前暂停快照（全局 + 各服务） |
 | POST | `/api/pause` | 暂停（`{"seconds":120,"reason":"deploy","serviceId":"web-cursor"?}`） |
 | DELETE | `/api/pause` | 恢复（`?serviceId=` 只恢复该服务，否则全局） |
+| GET | `/api/sync` | 对账状态（upstream / stale / desired / applied） |
+| POST | `/api/sync` | 立即对账一次 |
 | GET | `/api/stats` | 聚合统计（registry + 各状态计数） |
 
 示例：
 
 ```bash
-# 立即探活 web-cursor
-curl -sS -X POST http://127.0.0.1:4230/api/services/web-cursor/probe
+# 看对账结果
+curl -sS http://127.0.0.1:4230/api/sync
+curl -sS -X POST http://127.0.0.1:4230/api/sync
 
-# 发版期间暂停 web-cursor 的自愈（2 分钟）
+# 立即探活 agent-control-plane（原 web-cursor，:4211）
+curl -sS -X POST http://127.0.0.1:4230/api/services/agent-control-plane/probe
+
+# 发版期间暂停自愈（2 分钟）
 curl -sS -X POST http://127.0.0.1:4230/api/pause \
   -H 'content-type: application/json' \
-  -d '{"seconds":120,"reason":"deploy","serviceId":"web-cursor"}'
-
-# 手动拉起
-curl -sS -X POST http://127.0.0.1:4230/api/services/web-cursor/remediate \
-  -H 'content-type: application/json' -d '{"action":"restart"}'
+  -d '{"seconds":120,"reason":"deploy","serviceId":"agent-control-plane"}'
 ```
 
-## 新增被监控服务
+## 探活名单从哪来
 
-**方式 A — API（运行时热加）**：
+启动后每 30 秒拉 `GET :4220/api/services` + `GET :4220/api/deployment-inventory`，
+把「本机已配置、在允许名单、不是 watchdog 自己」的服务 upsert 成契约。
+`:4220` 挂了就继续用 SQLite 里上次成功的名单（`stale=true`）。
 
-```bash
-curl -sS -X PUT http://127.0.0.1:4230/api/services/my-api \
-  -H 'content-type: application/json' -d '{
-    "name": "My API",
-    "group": "apps",
-    "probeType": "http",
-    "probeTarget": "http://127.0.0.1:4301/health",
-    "expectStatus": 200,
-    "intervalSec": 15,
-    "remediation": "restart",
-    "runtimeDir": "/Users/gaolei/runtime/my-api",
-    "restartCmd": "bash scripts/restart.sh",
-    "failureThreshold": 3,
-    "cooldownSec": 90,
-    "maxRemediationsPerHour": 4
-  }'
-```
+空库（新装）会先 bootstrap 三条鸡生蛋服务：部署平台、`service_registry`、
+`agent-control-plane`（runtime 仍是 `~/runtime/web-cursor`）。旧的
+`web-cursor` 行会迁成 `agent-control-plane` 并禁用。
 
-**方式 B — 声明式 seed（首次启动导入）**：把 `WATCHDOG_SEED_FILE` 指向一个
-JSON 数组（元素为部分契约），启动时按需写入/更新，不需要改代码。
+**加服务（P0）**：把它的 `serviceId` 加进 `WATCHDOG_SYNC_ALLOW`，并保证
+部署平台上有 `port` / `healthUrl` / `runtimeDir` / `startCmd`、inventory
+含 `machineId=local`。`WATCHDOG_SYNC_ALLOW=*` 监督所有合格本机服务。
+
+**临时钉住**：`PUT /api/services/:id` 带 `"pinned": true`，同步不会覆盖。
+未钉住的手动 PUT 下次对账会被部署契约盖掉。
+
+**方式 C — 声明式 seed 文件**：`WATCHDOG_SEED_FILE` 仍可用，适合调试。
 
 ## 发版与上线
 
@@ -222,7 +220,12 @@ JSON 数组（元素为部分契约），启动时按需写入/更新，不需�
 `WATCHDOG_DEFAULT_*`（探针/策略默认值）、`WATCHDOG_REMEDIATION_TIMEOUT_SEC`、
 `WATCHDOG_RECORD_PROBES`（默认关，开启后每次探活都落库）、
 `WATCHDOG_LEGACY_DEPLOY_DIR`（默认 `~/deployment`）、`WATCHDOG_SEED_FILE`、
-`WATCHDOG_LOG_LEVEL`。
+`WATCHDOG_LOG_LEVEL`、
+`WATCHDOG_DEPLOY_URL`（默认 `http://127.0.0.1:4220`）、
+`WATCHDOG_SYNC`（默认开）、`WATCHDOG_SYNC_INTERVAL_SEC`（默认 30）、
+`WATCHDOG_SYNC_ALLOW`（默认首批 5 个；`*` 全部；空 = 不同步）、
+`WATCHDOG_SYNC_EXCLUDE`（额外排除，默认已含 `watchdog`）、
+`WATCHDOG_SYNC_BOOTSTRAP`（空库才种）。
 
 ## 安全
 

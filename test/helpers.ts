@@ -13,6 +13,13 @@ export function tmpConfig(prefix = "watchdog-test-"): Config {
   process.env.WATCHDOG_HOME = dir;
   process.env.WATCHDOG_LEGACY_DEPLOY_DIR = path.join(dir, "deployment");
   delete process.env.WATCHDOG_SEED_FILE;
+  delete process.env.WATCHDOG_DEPLOY_URL;
+  delete process.env.WATCHDOG_SYNC;
+  delete process.env.WATCHDOG_SYNC_ALLOW;
+  delete process.env.WATCHDOG_SYNC_BOOTSTRAP;
+  delete process.env.WATCHDOG_SYNC_EXCLUDE;
+  delete process.env.WATCHDOG_SYNC_INTERVAL_SEC;
+  delete process.env.WATCHDOG_SYNC_TIMEOUT_MS;
   return loadConfig();
 }
 

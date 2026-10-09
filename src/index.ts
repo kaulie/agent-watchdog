@@ -9,6 +9,7 @@ import { log } from "./logger.js";
 import { PauseController } from "./pause.js";
 import { registerRoutes } from "./routes.js";
 import { seedDefaults } from "./seed.js";
+import { SyncReconciler } from "./sync.js";
 
 const config = loadConfig();
 
@@ -31,11 +32,12 @@ seedDefaults(store, config);
 
 const pause = new PauseController(config);
 const engine = new MonitorEngine(store, config, pause);
+const sync = new SyncReconciler(store, config);
 
 const app = Fastify({ logger: false });
 await app.register(cors, { origin: true });
 
-registerRoutes(app, { store, config, engine, pause, version, startedAt });
+registerRoutes(app, { store, config, engine, pause, sync, version, startedAt });
 
 const pidFile = path.join(config.home, "watchdog.pid");
 fs.writeFileSync(pidFile, `${process.pid}\n`);
@@ -45,6 +47,7 @@ const shutdown = async (signal: string): Promise<void> => {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info(`shutting down (${signal})`);
+  sync.stop();
   engine.stop();
   try {
     store.appendEvent({
@@ -82,6 +85,7 @@ store.appendEvent({
 });
 
 engine.start();
+sync.start();
 log.info(
   `agent-watchdog v${version} listening on http://${config.host}:${config.port} home=${config.home}`,
 );
