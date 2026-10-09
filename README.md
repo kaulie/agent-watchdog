@@ -40,7 +40,7 @@
 - **注册表驱动**：所有行为都写在 `services` 契约表里，天然支持多服务。
 - **有审计**：状态迁移、自愈动作、暂停都落库，可回溯“什么时候谁把服务拉起来的”。
 
-> 默认监督：`agent-control-plane`、`service_registry`、`agent-control-plane-deployment`、`home-agent-brain`、`home-agent-gateway`。用 `WATCHDOG_SYNC_ALLOW` 增减；`*` 表示所有本机已配置服务（仍排除 watchdog 自己）。
+> 默认监督：`agent-control-plane`、`service_registry`、`agent-control-plane-deployment`、`home-agent-brain`、`home-agent-gateway`。另钉住 `acp-upgrader`（command 探针看 `upgrader.pid`，不从 :4220 对账）。用 `WATCHDOG_SYNC_ALLOW` 增减；`*` 表示所有本机已配置服务（仍排除 watchdog 自己和 `acp-upgrader`）。
 
 ## 概念模型
 

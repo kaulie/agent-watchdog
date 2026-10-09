@@ -53,9 +53,48 @@ const CANONICAL_CONTROL_PLANE_ID = "agent-control-plane";
 export function seedDefaults(store: Store, config: Config): void {
   migrateLegacyWebCursor(store, config);
   seedBootstrapIfEmpty(store, config);
+  seedAcpUpgraderIfMissing(store, config);
   if (config.extraSeedFile) {
     seedFromFile(store, config, config.extraSeedFile);
   }
+}
+
+/** ACP HTTP (:4220) is a different contract. This row only watches acp-upgrader. */
+export const ACP_UPGRADER_ID = "acp-upgrader";
+
+export function seedAcpUpgraderIfMissing(store: Store, config: Config): void {
+  if (store.getService(ACP_UPGRADER_ID)) return;
+  const runtimeDir = path.join(
+    os.homedir(),
+    "runtime",
+    "agent-control-plane-deployment",
+  );
+  const contract = buildContract(
+    {
+      serviceId: ACP_UPGRADER_ID,
+      name: "ACP Upgrader",
+      group: "infra",
+      probeType: "command",
+      probeTarget: "bash scripts/upgrader-status.sh",
+      remediation: "start",
+      runtimeDir,
+      startCmd: "bash scripts/upgrader-start.sh",
+      restartCmd: "bash scripts/upgrader-restart.sh",
+      stopCmd: "bash scripts/upgrader-stop.sh",
+      enabled: true,
+      source: "bootstrap",
+      pinned: true,
+    },
+    config,
+  );
+  store.upsertService(contract);
+  store.appendEvent({
+    serviceId: ACP_UPGRADER_ID,
+    type: "service_upsert",
+    message: "bootstrapped pinned service acp-upgrader",
+    data: { probeTarget: contract.probeTarget },
+  });
+  log.info(`bootstrapped pinned service ${ACP_UPGRADER_ID} → ${contract.probeTarget}`);
 }
 
 export function migrateLegacyWebCursor(store: Store, config: Config): void {

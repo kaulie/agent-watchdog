@@ -53,6 +53,7 @@ test("sync allow defaults to the first-wave control-plane set", () => {
   assert.ok(Array.isArray(cfg.syncAllow));
   assert.ok((cfg.syncAllow as string[]).includes("agent-control-plane"));
   assert.ok(cfg.syncExclude.includes("watchdog"));
+  assert.ok(cfg.syncExclude.includes("acp-upgrader"));
 });
 
 test("WATCHDOG_SYNC_ALLOW=* means every eligible service", () => {

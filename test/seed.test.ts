@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildContract } from "../src/contract.js";
 import {
+  ACP_UPGRADER_ID,
   migrateLegacyWebCursor,
+  seedAcpUpgraderIfMissing,
   seedBootstrapIfEmpty,
   seedDefaults,
 } from "../src/seed.js";
@@ -76,4 +78,23 @@ test("seedDefaults migrates then skips bootstrap because store is not empty", ()
   seedDefaults(store, config);
   assert.ok(store.getService("agent-control-plane"));
   assert.equal(store.getService("service_registry"), undefined);
+  const upgrader = store.getService(ACP_UPGRADER_ID)!;
+  assert.equal(upgrader.pinned, true);
+  assert.equal(upgrader.probeType, "command");
+  assert.equal(upgrader.startCmd, "bash scripts/upgrader-start.sh");
+});
+
+test("acp-upgrader is seeded even when the store already has rows", () => {
+  const config = tmpConfig();
+  const store = tmpStore(config);
+  store.upsertService(
+    buildContract(
+      { serviceId: "already", probeTarget: "http://127.0.0.1:1/health" },
+      config,
+    ),
+  );
+  seedAcpUpgraderIfMissing(store, config);
+  seedAcpUpgraderIfMissing(store, config);
+  assert.equal(store.listServices().length, 2);
+  assert.equal(store.getService(ACP_UPGRADER_ID)?.pinned, true);
 });
