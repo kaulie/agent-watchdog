@@ -25,6 +25,17 @@ test("composeProbeTarget rewrites absolute URLs onto 127.0.0.1", () => {
   );
 });
 
+test("composeProbeTarget stamps catalog port onto absolute healthUrl", () => {
+  assert.equal(
+    composeProbeTarget(4244, "http://49.234.45.173/health"),
+    "http://127.0.0.1:4244/health",
+  );
+  assert.equal(
+    composeProbeTarget(4244, "http://49.234.45.173:9999/health"),
+    "http://127.0.0.1:4244/health",
+  );
+});
+
 test("hasLocalInstance is true when inventory is missing or lists local", () => {
   assert.equal(hasLocalInstance("brain", null), true);
   assert.equal(

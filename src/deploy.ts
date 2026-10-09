@@ -137,6 +137,7 @@ export function composeProbeTarget(
   if (/^https?:\/\//i.test(raw)) {
     const u = new URL(raw);
     u.hostname = bindHost;
+    u.port = String(port);
     return u.toString();
   }
   const path = raw ? (raw.startsWith("/") ? raw : `/${raw}`) : "/health";

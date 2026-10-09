@@ -9,6 +9,50 @@ export interface RemediationResult {
   output: string;
 }
 
+/** Watchdog's own listen-port identity. Must not leak into a child service. */
+const SUPERVISOR_PORT_KEYS = ["PORT", "SERVICE_PORT", "WATCHDOG_PORT"] as const;
+
+/**
+ * Listen port from the deployment contract already stored on the service.
+ * HTTP `probeTarget` is composed at sync/bootstrap as
+ * `http://127.0.0.1:${catalog.port}${path}` — watchdog never invents a port.
+ */
+export function listenPortFromContract(svc: ServiceContract): number | null {
+  if (svc.probeType !== "http") return null;
+  try {
+    const port = new URL(svc.probeTarget).port;
+    if (!port) return null;
+    const n = Number(port);
+    if (Number.isInteger(n) && n > 0 && n <= 65535) return n;
+  } catch {
+    /* not a URL */
+  }
+  return null;
+}
+
+/**
+ * Child env for start/restart/stop. Inherit the supervisor process for PATH
+ * and similar, but replace listen-port identity with the contract port.
+ */
+export function remediationEnv(
+  svc: ServiceContract,
+  extra: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extra };
+  for (const key of SUPERVISOR_PORT_KEYS) {
+    delete env[key];
+  }
+  const port = listenPortFromContract(svc);
+  if (port != null) {
+    const value = String(port);
+    env.PORT = value;
+    env.SERVICE_PORT = value;
+  }
+  env.WATCHDOG_SERVICE_ID = svc.serviceId;
+  if (svc.runtimeDir) env.RUNTIME_DIR = svc.runtimeDir;
+  return env;
+}
+
 /** Resolve the shell command that implements an action for a contract. */
 export function commandFor(
   svc: ServiceContract,
@@ -52,12 +96,7 @@ export function runRemediation(
     let settled = false;
     const child = spawn("/bin/bash", ["-lc", command], {
       cwd: svc.runtimeDir ?? process.cwd(),
-      env: {
-        ...process.env,
-        ...(opts.env ?? {}),
-        WATCHDOG_SERVICE_ID: svc.serviceId,
-        ...(svc.runtimeDir ? { RUNTIME_DIR: svc.runtimeDir } : {}),
-      },
+      env: remediationEnv(svc, opts.env ?? {}),
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });
