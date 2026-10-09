@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { registerDashboard } from "./dashboard.js";
 import type { Config } from "./config.js";
 import { buildContract, ContractError, type ContractInput } from "./contract.js";
 import type { Store } from "./db.js";
@@ -21,6 +22,7 @@ const ACTIONS: RemediationAction[] = ["start", "restart", "stop", "none"];
 
 export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { store, config, engine, pause, sync } = deps;
+  registerDashboard(app, store);
 
   app.get("/health", async () => ({
     ok: true,
@@ -35,6 +37,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     service: "agent-watchdog",
     version: deps.version,
     endpoints: {
+      dashboard: "GET /dashboard",
+      healthHistory: "GET /api/services/:id/health-history?from=&to=&before=",
       health: "GET /health",
       services: "GET|POST /api/services, GET|PUT|DELETE /api/services/:id",
       state: "GET /api/state, GET /api/state/:id",

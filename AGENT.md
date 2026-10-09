@@ -27,6 +27,13 @@
 
 ## 开发流程
 
+本仓库目前没有 `project_map/`；目录和操作说明见 `README.md`。
+Dashboard 在 `/dashboard`，实际探测历史独立存于 `health_checks`，不要用审计事件或状态迁移替代。
+2026-10-09 只读核对部署平台 `/api/services`：本仓库对应的 service ID 是 `watchdog`，
+`gitRepoUrl=https://github.com/kaulie/agent-watchdog`，`defaultBranch=main`，配置端口为 **4235**。
+下文 **4230 是代码默认值**，访问实际部署时以平台契约和运行健康检查为准。
+运行平台的端口配置与默认值不同，不应据此修改默认配置。
+
 1. 在 task workspace 改代码，本地自测（`npm run typecheck` + `npm test`）。
 2. 端口用 **4230**；本地自测为避免冲突可换端口（例如 `SERVICE_PORT=4239` 或 `WATCHDOG_PORT=4239`）。
 3. `git commit` → `git push -u origin HEAD` → `gh pr create`，回写 `prUrl`。

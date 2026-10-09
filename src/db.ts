@@ -9,6 +9,7 @@ import type {
   RemediationRecord,
   ServiceContract,
   SyncState,
+  ProbeResult,
 } from "./types.js";
 
 function nowIso(): string {
@@ -22,12 +23,63 @@ function bool(v: unknown): boolean {
 export class Store {
   private db: DatabaseSync;
 
+  close(): void {
+    this.db.close();
+  }
+
+  recordProbe(serviceId: string, result: ProbeResult): void {
+    this.db.prepare(`INSERT INTO health_checks
+      (service_id, checked_at, ok, latency_ms, status, error) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(serviceId, Date.parse(result.checkedAt), result.ok ? 1 : 0,
+        result.latencyMs, result.status ?? null, result.error ?? null);
+  }
+
+  pruneProbes(now = Date.now()): void {
+    this.db.prepare('DELETE FROM health_checks WHERE checked_at < ?')
+      .run(now - 30 * 86400000);
+  }
+
+  probeHistory(serviceId: string, from: number, to: number, before?: number) {
+    const latest = this.db.prepare(`SELECT checked_at AS checkedAt, ok FROM health_checks
+      WHERE service_id = ? ORDER BY checked_at DESC, id DESC LIMIT 1`).get(serviceId) as
+      {checkedAt: number; ok: number} | undefined;
+    const width = (to - from) / 24;
+    const groups = this.db.prepare(`SELECT CAST((checked_at - ?) / ? AS INTEGER) AS bucket,
+      COUNT(*) AS total, SUM(ok) AS successful FROM health_checks
+      WHERE service_id = ? AND checked_at >= ? AND checked_at < ? GROUP BY bucket`)
+      .all(from, width, serviceId, from, to) as Array<{bucket: number; total: number; successful: number}>;
+    const buckets = Array.from({length: 24}, (_, i) => {
+      const group = groups.find(g => g.bucket === i);
+      const total = Number(group?.total ?? 0), successful = Number(group?.successful ?? 0);
+      return {from: from + i * width, to: from + (i + 1) * width, total, successful,
+        availability: total ? successful / total * 100 : null};
+    });
+    const total = buckets.reduce((n, b) => n + b.total, 0);
+    const successful = buckets.reduce((n, b) => n + b.successful, 0);
+    const rows = this.db.prepare(`SELECT id, checked_at AS checkedAt, ok,
+      latency_ms AS latencyMs, status, error FROM health_checks
+      WHERE service_id = ? AND checked_at >= ? AND checked_at < ? AND id < ?
+      ORDER BY id DESC LIMIT 101`).all(serviceId, from, to, before ?? Number.MAX_SAFE_INTEGER) as
+      Array<{id: number; checkedAt: number; ok: number; latencyMs: number; status: number | null; error: string | null}>;
+    const events = rows.slice(0, 100).map(r => ({...r, ok: r.ok === 1}));
+    return {serviceId, from, to, latest: latest ? {...latest, ok: latest.ok === 1} : null,
+      total, successful, availability: total ? successful / total * 100 : null,
+      buckets, events, nextCursor: rows.length > 100 ? events.at(-1)!.id : null};
+  }
+
   constructor(dbPath: string) {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     this.db = new DatabaseSync(dbPath);
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA busy_timeout = 5000;");
     this.migrate();
+    this.db.exec(`CREATE TABLE IF NOT EXISTS health_checks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, service_id TEXT NOT NULL,
+      checked_at INTEGER NOT NULL, ok INTEGER NOT NULL, latency_ms INTEGER NOT NULL,
+      status INTEGER, error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_checks_service_time ON health_checks(service_id, checked_at);
+    CREATE INDEX IF NOT EXISTS idx_checks_time ON health_checks(checked_at);`);
   }
 
   private migrate(): void {
@@ -480,4 +532,3 @@ function mapService(r: Record<string, unknown>): ServiceContract {
     updatedAt: String(r.updated_at),
   };
 }
-
