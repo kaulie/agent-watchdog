@@ -3,6 +3,8 @@ import type { Store } from "./db.js";
 
 export function registerDashboard(app: FastifyInstance, store: Store): void {
   app.get('/dashboard', async (_req, reply) => reply.type('text/html').send(page));
+  // Probe results on this page are SQLite-only (`health_checks`). Opening the
+  // dashboard never runs a live probe and never reads engine in-memory state.
   app.get<{Params: {id: string}; Querystring: {from?: string; to?: string; before?: string}}>(
     '/api/services/:id/health-history', async (req, reply) => {
       const service = store.getService(req.params.id);
@@ -29,7 +31,7 @@ h1{margin-bottom:8px}h2{font-size:19px}p{color:#53657b;line-height:1.6}section{b
 button{cursor:pointer}button:disabled{opacity:.5;cursor:default}#metric{font-size:34px;font-weight:700}#chart{display:flex;height:170px;gap:4px;align-items:end;border-bottom:1px solid #b3c2d4;margin-top:20px}
 .bucket{flex:1;height:100%;display:flex;align-items:end;background:#f0f3f7;position:relative}.bar{width:100%;background:#227665;min-height:2px}.empty{background:repeating-linear-gradient(45deg,#e6ebf1,#e6ebf1 4px,#f8fafc 4px,#f8fafc 8px)}
 .axis{display:flex;justify-content:space-between;font-size:12px;color:#53657b;margin-top:8px}.table{overflow:auto}table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:12px 8px;border-bottom:1px solid #e3e9f0}td:last-child{overflow-wrap:anywhere;max-width:400px}.bad{color:#b32c36}.good{color:#227665}#message{min-height:24px}
-</style></head><body><main><h1>Watchdog</h1><p>按服务查看实际 health check 结果</p>
+</style></head><body><main><h1>Watchdog</h1><p>按服务查看实际 health check 结果。探测记录来自本机 SQLite，打开本页不会现场探活。</p>
 <div class="controls"><label>服务<select id="service" aria-label="服务"></select></label>
 <label>时间范围<select id="range"><option value="1">最近 1 小时</option><option value="24" selected>最近 24 小时</option><option value="168">最近 7 天</option><option value="720">最近 30 天</option></select></label><button id="refresh">刷新</button></div>
 <p id="message" role="status" aria-live="polite"></p>

@@ -148,6 +148,19 @@ npm run dev         # tsx watch
 每页 100 条，可加载更早记录。最新结果独立于历史筛选；超过两倍探测周期或超时预算
 （取较大值）标记过期，禁用服务明确标识，不将旧成功结果当作当前健康保证。
 
+**数据都存数据库。** Dashboard 上的 health check 结果全部来自本机 SQLite，打开页面
+不会现场探活，也不读引擎内存里的滞回 up/down。
+
+| 页面内容 | 存哪 | 说明 |
+|---|---|---|
+| 最新探测、SLA 数字、24 柱图表、逐次列表 | `health_checks` | 每次定时或手动探测后立刻写入；保留 30 天 |
+| 服务名称、ID、是否启用 | `services` | 契约表；下拉框来自 `GET /api/services` |
+| 可用率百分比、24 个时间桶 | 不单独存一行 | 查询时从 `health_checks` 按窗口聚合 |
+| 「数据已过期」标记 | 不存 | 浏览器用当前时间对比最新 `checked_at` |
+
+`WATCHDOG_RECORD_PROBES` **不**控制这张表：它只决定是否把每次探活再写一份到
+`events` 审计表（默认关，很吵）。Dashboard 不用 `events`。
+
 - 口径：成功探测次数 / 总探测次数 × 100%，是**样本可用率**，不是时长加权 SLA。
   手动与定时探测均纳入；使用原始探测结果，不用带滞回的 up/down 状态。
 - 边界：`[from, to)`，API 使用整数 epoch 毫秒，页面显示浏览器本地时间。
@@ -240,7 +253,8 @@ curl -sS -X POST http://127.0.0.1:4230/api/pause \
 环境变量：`WATCHDOG_HOME`、`WATCHDOG_HOST`、`SERVICE_PORT`（优先）/
 `WATCHDOG_PORT`（其次，默认 `4230`）、
 `WATCHDOG_DEFAULT_*`（探针/策略默认值）、`WATCHDOG_REMEDIATION_TIMEOUT_SEC`、
-`WATCHDOG_RECORD_PROBES`（默认关，开启后每次探活都落库）、
+`WATCHDOG_RECORD_PROBES`（默认关；开启后每次探活额外写入 `events` 审计表，
+与 dashboard 用的 `health_checks` 无关——后者始终落库）、
 `WATCHDOG_LEGACY_DEPLOY_DIR`（默认 `~/deployment`）、`WATCHDOG_SEED_FILE`、
 `WATCHDOG_LOG_LEVEL`、
 `WATCHDOG_DEPLOY_URL`（默认 `http://127.0.0.1:4220`）、
@@ -253,7 +267,7 @@ curl -sS -X POST http://127.0.0.1:4230/api/pause \
 
 - 只监听 `127.0.0.1`；API 无鉴权，**不要**暴露到公网。
 - 自愈只会执行契约里显式配置的命令，命令以 `/bin/bash -lc` 在 `runtimeDir` 下运行，超时按进程组杀树。
-- 不保存任何密钥；数据库仅含契约、状态、审计事件与自愈输出（截断）。
+- 不保存任何密钥；数据库含契约、`health_checks` 探测历史、审计事件与自愈输出（截断）。运行态（滞回 up/down）在进程内存里，不进这几张表。
 
 ## 与旧实现的关系（迁移状态）
 

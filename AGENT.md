@@ -28,7 +28,7 @@
 ## 开发流程
 
 本仓库目前没有 `project_map/`；目录和操作说明见 `README.md`。
-Dashboard 在 `/dashboard`，实际探测历史独立存于 `health_checks`，不要用审计事件或状态迁移替代。
+Dashboard 在 `/dashboard`，实际探测历史独立存于 SQLite `health_checks`（打开页面只读库、不现场探活），不要用审计事件或状态迁移替代。
 2026-10-09 只读核对部署平台 `/api/services`：本仓库对应的 service ID 是 `watchdog`，
 `gitRepoUrl=https://github.com/kaulie/agent-watchdog`，`defaultBranch=main`，配置端口为 **4235**。
 下文 **4230 是代码默认值**，访问实际部署时以平台契约和运行健康检查为准。

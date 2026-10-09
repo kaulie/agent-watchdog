@@ -30,6 +30,7 @@ test('history isolates services, uses [from,to), counts raw results and empty bu
     const page = await app.inject('/dashboard'); assert.equal(page.statusCode,200);
     assert.match(page.headers['content-type']!, /text\/html/);
     assert.match(page.body,/逐次 health check/); assert.match(page.body,/textContent=value/);
+    assert.match(page.body,/探测记录来自本机 SQLite/); assert.match(page.body,/不会现场探活/);
   } finally {await app.close();store.close();}
 });
 
