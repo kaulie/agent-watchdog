@@ -141,6 +141,27 @@ npm run dev         # tsx watch
 
 ## REST API
 
+### 服务健康 dashboard
+
+打开 `/dashboard`，选择服务和最近 1 小时 / 24 小时 / 7 天 / 30 天。
+页面展示最新实际探测结果、24 个时间桶的可用率图表及逐次探测列表；点击刷新更新窗口，
+每页 100 条，可加载更早记录。最新结果独立于历史筛选；超过两倍探测周期或超时预算
+（取较大值）标记过期，禁用服务明确标识，不将旧成功结果当作当前健康保证。
+
+- 口径：成功探测次数 / 总探测次数 × 100%，是**样本可用率**，不是时长加权 SLA。
+  手动与定时探测均纳入；使用原始探测结果，不用带滞回的 up/down 状态。
+- 边界：`[from, to)`，API 使用整数 epoch 毫秒，页面显示浏览器本地时间。
+  24 桶等宽；空桶和空窗口可用率为 `null`，页面显示斜线 / 无数据，绝不记作 100%。
+- 独立 SQLite `health_checks` 表在每次探测后写入（不受 `WATCHDOG_RECORD_PROBES` 控制），
+  每 300 tick 清理 30 天以前记录；进程停止期间不清理。上线前没有历史，不从状态迁移反推。
+- `GET /api/services/:id/health-history?from=<ms>&to=<ms>&before=<id>`：
+  默认最近 24 小时，最大窗口 30 天；返回全窗口聚合、最新探测及 `events` / `nextCursor`。
+  `before` 只分页事件，不改变聚合；分页沿用同一窗口。非法参数 400，未知服务 404。
+- 保留原 `/` JSON 索引。页面无需前端依赖或外部 CDN，随 TypeScript 构建进入发布包。
+
+验证：`npm run typecheck && npm test && npm run build`；`test/dashboard.test.ts`
+覆盖服务隔离、时间边界、样本计算、空桶、事件字段、分页、保留期限和引擎写入/持久化。
+
 | Method | Path | 说明 |
 |---|---|---|
 | GET | `/health` | 自身探活（`version` / `uptimeSec`） |
@@ -239,4 +260,3 @@ curl -sS -X POST http://127.0.0.1:4230/api/pause \
 - 本服务**取代**部署侧 shell `ops/watchdog.sh` 的职责（探活 + 拉起），并保留对其 `watchdog-pause-until` 标记的兼容读取。
 - 部署服务进程内的 `Watchdog` 类可切换到「只做部署」、由本服务专责监控（切换属部署仓库改动，另行进行）。
 - web-cursor runtime 内 `scripts/watchdog.sh` 仍标注 DEPRECATED，属应用自带的应急副本。
-

@@ -123,6 +123,7 @@ export class MonitorEngine {
     if (++this.tickCount % 300 === 0) {
       try {
         this.store.pruneEvents(5000);
+        this.store.pruneProbes();
       } catch {
         /* ignore */
       }
@@ -137,6 +138,7 @@ export class MonitorEngine {
     const status = this.ensureStatus(svc.serviceId);
     const probe = this.deps.probe ?? ((s: ServiceContract) => runProbe(s));
     const result = await probe(svc);
+    this.store.recordProbe(svc.serviceId, result);
 
     status.lastProbeAt = result.checkedAt;
     status.lastProbeOk = result.ok;
