@@ -60,6 +60,33 @@ function setup(
   return { engine, store, pause, remediations, get };
 }
 
+test("remaining down remediates again after cooldown elapses", async () => {
+  const { engine, remediations, get } = setup(async () => failResult(), {
+    failureThreshold: 1,
+    cooldownSec: 0,
+  });
+  await engine.probeAndEvaluate(get(), true);
+  assert.equal(engine.getStatus("svc")!.state, "down");
+  assert.equal(remediations.length, 1);
+
+  await engine.probeAndEvaluate(get(), true);
+  assert.equal(engine.getStatus("svc")!.state, "down");
+  assert.equal(remediations.length, 2);
+});
+
+test("remaining down still respects cooldown", async () => {
+  const { engine, remediations, get } = setup(async () => failResult(), {
+    failureThreshold: 1,
+    cooldownSec: 3600,
+  });
+  await engine.probeAndEvaluate(get(), true);
+  assert.equal(remediations.length, 1);
+
+  await engine.probeAndEvaluate(get(), true);
+  assert.equal(engine.getStatus("svc")!.state, "down");
+  assert.equal(remediations.length, 1);
+});
+
 test("failures drive unknown → down and remediate exactly once", async () => {
   let result = failResult("e1");
   const { engine, remediations, store, get } = setup(async () => result);

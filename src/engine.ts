@@ -155,11 +155,15 @@ export class MonitorEngine {
     } else {
       status.consecutiveFailures += 1;
       status.consecutiveSuccesses = 0;
-      if (
-        status.state !== "down" &&
-        status.consecutiveFailures >= svc.failureThreshold
-      ) {
-        await this.transition(svc, status, "down", result.error ?? "probe failed");
+      if (status.consecutiveFailures >= svc.failureThreshold) {
+        if (status.state !== "down") {
+          await this.transition(
+            svc,
+            status,
+            "down",
+            result.error ?? "probe failed",
+          );
+        }
         if (allowRemediation) {
           await this.maybeRemediate(svc, status, "threshold");
         }
