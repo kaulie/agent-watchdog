@@ -4,6 +4,7 @@ import { buildContract, ContractError, type ContractInput } from "./contract.js"
 import type { Store } from "./db.js";
 import type { MonitorEngine } from "./engine.js";
 import type { PauseController } from "./pause.js";
+import type { SyncReconciler } from "./sync.js";
 import type { RemediationAction } from "./types.js";
 
 export interface RouteDeps {
@@ -11,6 +12,7 @@ export interface RouteDeps {
   config: Config;
   engine: MonitorEngine;
   pause: PauseController;
+  sync: SyncReconciler;
   version: string;
   startedAt: number;
 }
@@ -18,7 +20,7 @@ export interface RouteDeps {
 const ACTIONS: RemediationAction[] = ["start", "restart", "stop", "none"];
 
 export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
-  const { store, config, engine, pause } = deps;
+  const { store, config, engine, pause, sync } = deps;
 
   app.get("/health", async () => ({
     ok: true,
@@ -41,6 +43,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       events: "GET /api/events?serviceId=&type=&limit=",
       remediations: "GET /api/remediations?serviceId=&limit=",
       pause: "GET|POST|DELETE /api/pause",
+      sync: "GET|POST /api/sync",
       stats: "GET /api/stats",
     },
     stats: store.stats(),
@@ -70,7 +73,11 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       const existing = store.getService(req.params.serviceId);
       try {
         const contract = buildContract(
-          { ...(req.body ?? {}), serviceId: req.params.serviceId },
+          {
+            ...(req.body ?? {}),
+            serviceId: req.params.serviceId,
+            source: "manual",
+          },
           config,
           existing,
         );
@@ -210,6 +217,29 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       return { ok: true };
     },
   );
+
+  // ---- deploy catalog sync ----------------------------------------------
+
+  app.get("/api/sync", async () => ({
+    enabled: config.syncEnabled,
+    deployUrl: config.deployUrl,
+    allow: config.syncAllow,
+    exclude: config.syncExclude,
+    bootstrap: config.syncBootstrap,
+    intervalSec: config.syncIntervalSec,
+    ...sync.status(),
+  }));
+
+  app.post("/api/sync", async () => {
+    const report = await sync.reconcile("api");
+    return {
+      enabled: config.syncEnabled,
+      deployUrl: config.deployUrl,
+      allow: config.syncAllow,
+      exclude: config.syncExclude,
+      ...report,
+    };
+  });
 
   // ---- stats -------------------------------------------------------------
 

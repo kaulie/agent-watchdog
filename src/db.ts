@@ -2,11 +2,13 @@ import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import type {
+  ContractSource,
   EventLevel,
   EventRecord,
   EventType,
   RemediationRecord,
   ServiceContract,
+  SyncState,
 } from "./types.js";
 
 function nowIso(): string {
@@ -54,8 +56,24 @@ export class Store {
         cooldown_sec INTEGER NOT NULL DEFAULT 60,
         max_remediations_per_hour INTEGER NOT NULL DEFAULT 6,
 
+        source TEXT NOT NULL DEFAULT 'manual',
+        pinned INTEGER NOT NULL DEFAULT 0,
+
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sync_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        last_attempt_at TEXT,
+        last_success_at TEXT,
+        last_error TEXT,
+        upstream_ok INTEGER NOT NULL DEFAULT 0,
+        stale INTEGER NOT NULL DEFAULT 0,
+        desired INTEGER NOT NULL DEFAULT 0,
+        applied INTEGER NOT NULL DEFAULT 0,
+        disabled INTEGER NOT NULL DEFAULT 0,
+        skipped_pinned INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS events (
@@ -84,6 +102,28 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS idx_remediations_service ON remediations(service_id, created_at);
     `);
+    this.addColumnIfMissing(
+      "services",
+      "source",
+      "TEXT NOT NULL DEFAULT 'manual'",
+    );
+    this.addColumnIfMissing(
+      "services",
+      "pinned",
+      "INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+
+  private addColumnIfMissing(
+    table: string,
+    column: string,
+    decl: string,
+  ): void {
+    const rows = this.db
+      .prepare(`PRAGMA table_info(${table})`)
+      .all() as Array<{ name: string }>;
+    if (rows.some((r) => r.name === column)) return;
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
   }
 
   // ---- services ----------------------------------------------------------
@@ -118,8 +158,8 @@ export class Store {
            expect_status, expect_body_contains,
            remediation, runtime_dir, start_cmd, restart_cmd, stop_cmd,
            failure_threshold, success_threshold, cooldown_sec,
-           max_remediations_per_hour, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           max_remediations_per_hour, source, pinned, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(service_id) DO UPDATE SET
            name = excluded.name,
            enabled = excluded.enabled,
@@ -139,6 +179,8 @@ export class Store {
            success_threshold = excluded.success_threshold,
            cooldown_sec = excluded.cooldown_sec,
            max_remediations_per_hour = excluded.max_remediations_per_hour,
+           source = excluded.source,
+           pinned = excluded.pinned,
            updated_at = excluded.updated_at`,
       )
       .run(
@@ -161,6 +203,8 @@ export class Store {
         row.successThreshold,
         row.cooldownSec,
         row.maxRemediationsPerHour,
+        row.source,
+        row.pinned ? 1 : 0,
         row.createdAt,
         row.updatedAt,
       );
@@ -340,6 +384,68 @@ export class Store {
       remediations: one("SELECT COUNT(*) AS n FROM remediations"),
     };
   }
+
+  getSyncState(): SyncState {
+    const row = this.db
+      .prepare(`SELECT * FROM sync_state WHERE id = 1`)
+      .get() as Record<string, unknown> | undefined;
+    if (!row) {
+      return {
+        lastAttemptAt: null,
+        lastSuccessAt: null,
+        lastError: null,
+        upstreamOk: false,
+        stale: false,
+        desired: 0,
+        applied: 0,
+        disabled: 0,
+        skippedPinned: 0,
+      };
+    }
+    return {
+      lastAttemptAt: row.last_attempt_at ? String(row.last_attempt_at) : null,
+      lastSuccessAt: row.last_success_at ? String(row.last_success_at) : null,
+      lastError: row.last_error ? String(row.last_error) : null,
+      upstreamOk: bool(row.upstream_ok),
+      stale: bool(row.stale),
+      desired: Number(row.desired),
+      applied: Number(row.applied),
+      disabled: Number(row.disabled),
+      skippedPinned: Number(row.skipped_pinned),
+    };
+  }
+
+  putSyncState(state: SyncState): SyncState {
+    this.db
+      .prepare(
+        `INSERT INTO sync_state (
+           id, last_attempt_at, last_success_at, last_error,
+           upstream_ok, stale, desired, applied, disabled, skipped_pinned
+         ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           last_attempt_at = excluded.last_attempt_at,
+           last_success_at = excluded.last_success_at,
+           last_error = excluded.last_error,
+           upstream_ok = excluded.upstream_ok,
+           stale = excluded.stale,
+           desired = excluded.desired,
+           applied = excluded.applied,
+           disabled = excluded.disabled,
+           skipped_pinned = excluded.skipped_pinned`,
+      )
+      .run(
+        state.lastAttemptAt,
+        state.lastSuccessAt,
+        state.lastError,
+        state.upstreamOk ? 1 : 0,
+        state.stale ? 1 : 0,
+        state.desired,
+        state.applied,
+        state.disabled,
+        state.skippedPinned,
+      );
+    return state;
+  }
 }
 
 function mapService(r: Record<string, unknown>): ServiceContract {
@@ -368,6 +474,8 @@ function mapService(r: Record<string, unknown>): ServiceContract {
     successThreshold: Number(r.success_threshold),
     cooldownSec: Number(r.cooldown_sec),
     maxRemediationsPerHour: Number(r.max_remediations_per_hour),
+    source: (r.source ? String(r.source) : "manual") as ContractSource,
+    pinned: bool(r.pinned),
     createdAt: String(r.created_at),
     updatedAt: String(r.updated_at),
   };

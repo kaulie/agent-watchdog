@@ -1,5 +1,6 @@
 import type { Config } from "./config.js";
 import type {
+  ContractSource,
   ProbeType,
   RemediationAction,
   ServiceContract,
@@ -26,6 +27,8 @@ export interface ContractInput {
   successThreshold?: number;
   cooldownSec?: number;
   maxRemediationsPerHour?: number;
+  source?: ContractSource;
+  pinned?: boolean;
 }
 
 export class ContractError extends Error {}
@@ -69,6 +72,15 @@ export function buildContract(
   );
   if (!["start", "restart", "stop", "none"].includes(remediation)) {
     throw new ContractError(`unsupported remediation: ${remediation}`);
+  }
+
+  const source: ContractSource = pick(
+    input.source,
+    existing?.source,
+    "manual",
+  );
+  if (!["deploy-sync", "manual", "bootstrap"].includes(source)) {
+    throw new ContractError(`unsupported source: ${source}`);
   }
 
   return {
@@ -144,6 +156,9 @@ export function buildContract(
       1,
       1000,
     ),
+
+    source,
+    pinned: pick(input.pinned, existing?.pinned, false),
 
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),

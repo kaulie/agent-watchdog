@@ -38,9 +38,42 @@ export interface Config {
 
   /** Extra services (JSON array of contracts) seeded on first boot. */
   extraSeedFile: string | null;
+
+  /** Deployment control plane used as the desired-state catalog. */
+  deployUrl: string;
+  /** Pull :4220 and reconcile contracts. */
+  syncEnabled: boolean;
+  /** Reconcile cadence in seconds. */
+  syncIntervalSec: number;
+  /** HTTP timeout for each catalog request. */
+  syncTimeoutMs: number;
+  /** Service IDs to supervise, or "*" for every eligible local service. */
+  syncAllow: string[] | "*";
+  /** Never supervise these IDs (always includes watchdog itself). */
+  syncExclude: string[];
+  /** Well-known control-plane IDs seeded only when the store is empty. */
+  syncBootstrap: string[];
 }
 
-function expandHome(p: string): string {
+/** First-wave services to supervise until deploy grows a `supervise` flag. */
+export const DEFAULT_SYNC_ALLOW = [
+  "agent-control-plane",
+  "service_registry",
+  "agent-control-plane-deployment",
+  "home-agent-brain",
+  "home-agent-gateway",
+] as const;
+
+/** Chicken-egg set: enough to bring :4220 / :4240 back after reboot. */
+export const DEFAULT_SYNC_BOOTSTRAP = [
+  "agent-control-plane-deployment",
+  "service_registry",
+  "agent-control-plane",
+] as const;
+
+export const DEFAULT_SYNC_EXCLUDE = ["watchdog", "agent-watchdog"] as const;
+
+export function expandHome(p: string): string {
   if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
   return p;
 }
@@ -56,6 +89,25 @@ function envBool(name: string, fallback: boolean): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
   if (!raw) return fallback;
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+/**
+ * Comma-separated IDs. Unset → fallback. Empty → []. "*" → all.
+ * `wildcard` enables the "*" token (used by the allowlist).
+ */
+export function parseIdList(
+  raw: string | undefined,
+  fallback: readonly string[],
+  wildcard = false,
+): string[] | "*" {
+  if (raw === undefined) return [...fallback];
+  const trimmed = raw.trim();
+  if (wildcard && trimmed === "*") return "*";
+  if (trimmed === "") return [];
+  return trimmed
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export function loadConfig(): Config {
@@ -107,5 +159,26 @@ export function loadConfig(): Config {
         path.join(os.homedir(), "deployment"),
     ),
     extraSeedFile: process.env.WATCHDOG_SEED_FILE?.trim() || null,
+    deployUrl: (
+      process.env.WATCHDOG_DEPLOY_URL?.trim() || "http://127.0.0.1:4220"
+    ).replace(/\/$/, ""),
+    syncEnabled: envBool("WATCHDOG_SYNC", true),
+    syncIntervalSec: Math.max(5, envInt("WATCHDOG_SYNC_INTERVAL_SEC", 30)),
+    syncTimeoutMs: Math.max(500, envInt("WATCHDOG_SYNC_TIMEOUT_MS", 3000)),
+    syncAllow: parseIdList(
+      process.env.WATCHDOG_SYNC_ALLOW,
+      DEFAULT_SYNC_ALLOW,
+      true,
+    ),
+    syncExclude: [
+      ...new Set([
+        ...DEFAULT_SYNC_EXCLUDE,
+        ...(parseIdList(process.env.WATCHDOG_SYNC_EXCLUDE, []) as string[]),
+      ]),
+    ],
+    syncBootstrap: parseIdList(
+      process.env.WATCHDOG_SYNC_BOOTSTRAP,
+      DEFAULT_SYNC_BOOTSTRAP,
+    ) as string[],
   };
 }

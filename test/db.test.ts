@@ -27,6 +27,8 @@ test("services round-trip through the store", () => {
   assert.equal(got!.group, "apps");
   assert.equal(got!.expectBodyContains, '"ok":true');
   assert.equal(got!.failureThreshold, 4);
+  assert.equal(got!.source, "manual");
+  assert.equal(got!.pinned, false);
   assert.equal(store.listServices().length, 1);
 
   // update keeps createdAt but bumps updatedAt

@@ -44,3 +44,27 @@ test("port falls back to WATCHDOG_PORT when SERVICE_PORT unset", () => {
     assert.equal(loadConfig().port, 4238);
   });
 });
+
+test("sync allow defaults to the first-wave control-plane set", () => {
+  tmpConfig();
+  const cfg = loadConfig();
+  assert.equal(cfg.deployUrl, "http://127.0.0.1:4220");
+  assert.equal(cfg.syncEnabled, true);
+  assert.ok(Array.isArray(cfg.syncAllow));
+  assert.ok((cfg.syncAllow as string[]).includes("agent-control-plane"));
+  assert.ok(cfg.syncExclude.includes("watchdog"));
+});
+
+test("WATCHDOG_SYNC_ALLOW=* means every eligible service", () => {
+  tmpConfig();
+  withEnv({ WATCHDOG_SYNC_ALLOW: "*" }, () => {
+    assert.equal(loadConfig().syncAllow, "*");
+  });
+});
+
+test("WATCHDOG_SYNC_ALLOW empty disables the allowlist", () => {
+  tmpConfig();
+  withEnv({ WATCHDOG_SYNC_ALLOW: "" }, () => {
+    assert.deepEqual(loadConfig().syncAllow, []);
+  });
+});

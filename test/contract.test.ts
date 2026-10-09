@@ -17,6 +17,8 @@ test("buildContract applies defaults for a minimal http service", () => {
   assert.equal(c.remediation, "start");
   assert.equal(c.intervalSec, config.defaultIntervalSec);
   assert.equal(c.failureThreshold, config.defaultFailureThreshold);
+  assert.equal(c.source, "manual");
+  assert.equal(c.pinned, false);
 });
 
 test("buildContract rejects missing target and bad serviceId", () => {

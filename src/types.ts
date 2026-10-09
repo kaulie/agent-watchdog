@@ -21,7 +21,11 @@ export type EventType =
   | "probe"
   | "state_change"
   | "remediation"
-  | "pause";
+  | "pause"
+  | "sync";
+
+/** Who last wrote this contract. Sync only disables `deploy-sync` / `bootstrap`. */
+export type ContractSource = "deploy-sync" | "manual" | "bootstrap";
 
 export type EventLevel = "info" | "warn" | "error";
 
@@ -66,6 +70,11 @@ export interface ServiceContract {
   cooldownSec: number;
   /** Hard cap on remediation actions per rolling hour (backoff safety net). */
   maxRemediationsPerHour: number;
+
+  /** Catalog origin. `deploy-sync` rows are reconciled from :4220. */
+  source: ContractSource;
+  /** When true, deploy sync must not change or disable this contract. */
+  pinned: boolean;
 
   createdAt: string;
   updatedAt: string;
@@ -118,4 +127,17 @@ export interface EventRecord {
   message: string;
   data: Record<string, unknown> | null;
   createdAt: string;
+}
+
+/** Last deploy-catalog reconcile (persisted so GET /api/sync survives restart). */
+export interface SyncState {
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  upstreamOk: boolean;
+  stale: boolean;
+  desired: number;
+  applied: number;
+  disabled: number;
+  skippedPinned: number;
 }
