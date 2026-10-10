@@ -151,6 +151,39 @@ test("failed catalog fetch keeps last-known contracts and marks stale", async ()
   assert.equal(store.getService("agent-control-plane")!.enabled, true);
 });
 
+test("reconcile applies catalog intervalSec and keeps it when omitted", async () => {
+  const config = tmpConfig();
+  config.syncAllow = ["agent-control-plane"];
+  const store = tmpStore(config);
+  store.upsertService(
+    buildContract(
+      {
+        serviceId: "agent-control-plane",
+        probeTarget: "http://127.0.0.1:9/old",
+        intervalSec: 12,
+        source: "deploy-sync",
+      },
+      config,
+    ),
+  );
+  const withInterval = sampleCatalog();
+  withInterval.services[0] = { ...withInterval.services[0]!, intervalSec: 30 };
+  const sync = new SyncReconciler(store, config, async () => ({
+    ok: true,
+    catalog: withInterval,
+  }));
+  await sync.reconcile("api");
+  assert.equal(store.getService("agent-control-plane")!.intervalSec, 30);
+
+  const withoutInterval = sampleCatalog();
+  const again = new SyncReconciler(store, config, async () => ({
+    ok: true,
+    catalog: withoutInterval,
+  }));
+  await again.reconcile("api");
+  assert.equal(store.getService("agent-control-plane")!.intervalSec, 30);
+});
+
 test("sync state survives a store re-read", async () => {
   const config = tmpConfig();
   const store = tmpStore(config);

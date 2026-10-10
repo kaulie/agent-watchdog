@@ -19,7 +19,7 @@
 
 ## 核心设计约束（改动前必读）
 
-1. **契约驱动**：探活/自愈参数都在 `services` 契约里；新增服务**不要**改引擎，加契约即可。
+1. **契约驱动**：探活/自愈参数都在 `services` 契约里；`intervalSec` 由部署平台 `:4220` 服务配置下发，对账写入本机契约。新增服务**不要**改引擎，加契约即可。
 2. **探针与自愈必须“永不抛异常”**：`health.ts` / `remediation.ts` 永远 resolve，错误转成结果对象，避免引擎被单个服务拖垮。
 3. **自愈闸门不可绕过**：pause → cooldown → rate limit → in-flight 去重，四道闸门是历史故障（重启风暴 / EADDRINUSE）的修复，改动需配套测试。
 4. **pause 兼容旧发版标记**：`<WATCHDOG_LEGACY_DEPLOY_DIR>/<serviceId>/ops/watchdog-pause-until` 必须继续被识别。

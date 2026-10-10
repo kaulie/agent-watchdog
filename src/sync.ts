@@ -199,6 +199,7 @@ export function mergeDesired(
       enabled: true,
       source: "deploy-sync",
       pinned: false,
+      ...(desired.intervalSec !== undefined ? { intervalSec: desired.intervalSec } : {}),
     },
     config,
     existing,
