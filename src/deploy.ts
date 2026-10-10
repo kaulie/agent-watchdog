@@ -17,6 +17,8 @@ export interface DeployService {
   configured?: boolean;
   /** When set, overrides the watchdog allowlist: true=supervise, false=skip. */
   supervise?: boolean;
+  /** Probe cadence in seconds. Watchdog applies this on sync when present. */
+  intervalSec?: number;
 }
 
 export interface InventoryMachine {
@@ -44,6 +46,7 @@ export interface DesiredContract {
   startCmd: string;
   restartCmd: string | null;
   stopCmd: string | null;
+  intervalSec?: number;
 }
 
 export interface SkippedService {
@@ -162,6 +165,12 @@ export function hasLocalInstance(
   );
 }
 
+function catalogIntervalSec(raw: unknown): number | undefined {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 2 || n > 86_400) return undefined;
+  return n;
+}
+
 function isComplete(svc: DeployService): string | null {
   const id = (svc.serviceId ?? "").trim();
   if (!id) return "missing serviceId";
@@ -218,6 +227,7 @@ export function selectDesired(
       startCmd: (svc.startCmd ?? "").trim(),
       restartCmd: (svc.restartCmd ?? "").trim() || null,
       stopCmd: (svc.stopCmd ?? "").trim() || null,
+      intervalSec: catalogIntervalSec(svc.intervalSec),
     });
   }
   return { desired, skipped };

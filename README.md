@@ -52,7 +52,7 @@
 |---|---|---|
 | 标识 | `serviceId` `name` `group` `enabled` `source` `pinned` | `enabled=false` 时既不探活也不自愈；`source=deploy-sync` 由 :4220 对账；`pinned` 钉住后同步不改 |
 | 探针 | `probeType` `probeTarget` `probeTimeoutMs` `expectStatus` `expectBodyContains` | `http`：GET URL，校验状态码/响应体；`command`：shell 命令，退出码 0 = 健康 |
-| 节奏 | `intervalSec` | 探活周期（秒）。引擎按每条契约自己的值探活。新服务默认 **30**，来自 `WATCHDOG_DEFAULT_INTERVAL_SEC`；已有契约对账时保留原值。改某一条：`PUT /api/services/:id` `{"intervalSec":30}` |
+| 节奏 | `intervalSec` | 探活周期（秒）。**真源是部署平台** `:4220` 服务配置里的 `intervalSec`（默认 30）。watchdog 对账时写入本机契约；目录没带这个字段时才保留本地值 / `WATCHDOG_DEFAULT_INTERVAL_SEC`。 |
 | 自愈 | `remediation` `runtimeDir` `startCmd` `restartCmd` `stopCmd` | `remediation` ∈ `start/restart/stop/none` |
 | 策略 | `failureThreshold` `successThreshold` `cooldownSec` `maxRemediationsPerHour` | 见下 |
 

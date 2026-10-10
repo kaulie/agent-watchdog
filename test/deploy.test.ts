@@ -169,6 +169,30 @@ test("selectDesired honors explicit supervise over the allowlist", () => {
   assert.ok(skipped.some((s) => s.reason === "supervise disabled"));
 });
 
+test("selectDesired forwards a valid catalog intervalSec", () => {
+  const { desired } = selectDesired(
+    catalog([
+      {
+        serviceId: "event-center",
+        runtimeDir: "/tmp/ec",
+        healthUrl: "/health",
+        port: 4438,
+        startCmd: "bash scripts/start.sh",
+        configured: true,
+        supervise: true,
+        intervalSec: 45,
+      },
+    ]),
+    { allow: "*", exclude: ["watchdog"] },
+  );
+  const row = desired.find((d) => d.serviceId === "event-center");
+  assert.equal(row?.intervalSec, 45);
+  assert.equal(
+    desired.find((d) => d.serviceId === "agent-control-plane")?.intervalSec,
+    undefined,
+  );
+});
+
 test("selectDesired skips remote-only and incomplete rows", () => {
   const { desired, skipped } = selectDesired(
     {
