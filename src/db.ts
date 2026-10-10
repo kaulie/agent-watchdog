@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
+import { DEFAULT_PROBE_INTERVAL_SEC } from "./config.js";
 import type {
   ContractSource,
   EventLevel,
@@ -93,7 +94,7 @@ export class Store {
         probe_type TEXT NOT NULL DEFAULT 'http',
         probe_target TEXT NOT NULL,
         probe_timeout_ms INTEGER NOT NULL DEFAULT 3000,
-        interval_sec INTEGER NOT NULL DEFAULT 10,
+        interval_sec INTEGER NOT NULL DEFAULT 30,
         expect_status INTEGER,
         expect_body_contains TEXT,
 
@@ -164,6 +165,25 @@ export class Store {
       "pinned",
       "INTEGER NOT NULL DEFAULT 0",
     );
+    this.bumpLegacyDefaultInterval();
+  }
+
+  /**
+   * One-shot: rows still on the old factory default (10s) become 30s.
+   * Custom intervals are left alone. Gated by PRAGMA user_version so a later
+   * explicit PUT of 10 is not rewritten on every restart.
+   */
+  private bumpLegacyDefaultInterval(): void {
+    const row = this.db.prepare("PRAGMA user_version").get() as
+      { user_version: number } | undefined;
+    if ((row?.user_version ?? 0) >= 1) return;
+    this.db
+      .prepare(
+        `UPDATE services SET interval_sec = ?, updated_at = ?
+          WHERE interval_sec = 10`,
+      )
+      .run(DEFAULT_PROBE_INTERVAL_SEC, new Date().toISOString());
+    this.db.exec("PRAGMA user_version = 1");
   }
 
   private addColumnIfMissing(

@@ -52,7 +52,7 @@
 |---|---|---|
 | 标识 | `serviceId` `name` `group` `enabled` `source` `pinned` | `enabled=false` 时既不探活也不自愈；`source=deploy-sync` 由 :4220 对账；`pinned` 钉住后同步不改 |
 | 探针 | `probeType` `probeTarget` `probeTimeoutMs` `expectStatus` `expectBodyContains` | `http`：GET URL，校验状态码/响应体；`command`：shell 命令，退出码 0 = 健康 |
-| 节奏 | `intervalSec` | 探活周期 |
+| 节奏 | `intervalSec` | 探活周期（秒）。引擎按每条契约自己的值探活。新服务默认 **30**，来自 `WATCHDOG_DEFAULT_INTERVAL_SEC`；已有契约对账时保留原值。改某一条：`PUT /api/services/:id` `{"intervalSec":30}` |
 | 自愈 | `remediation` `runtimeDir` `startCmd` `restartCmd` `stopCmd` | `remediation` ∈ `start/restart/stop/none` |
 | 策略 | `failureThreshold` `successThreshold` `cooldownSec` `maxRemediationsPerHour` | 见下 |
 
@@ -252,7 +252,8 @@ curl -sS -X POST http://127.0.0.1:4230/api/pause \
 
 环境变量：`WATCHDOG_HOME`、`WATCHDOG_HOST`、`SERVICE_PORT`（优先）/
 `WATCHDOG_PORT`（其次，默认 `4230`）、
-`WATCHDOG_DEFAULT_*`（探针/策略默认值）、`WATCHDOG_REMEDIATION_TIMEOUT_SEC`、
+`WATCHDOG_DEFAULT_INTERVAL_SEC`（新契约探活周期，默认 `30`）、
+`WATCHDOG_DEFAULT_*`（其余探针/策略默认值）、`WATCHDOG_REMEDIATION_TIMEOUT_SEC`、
 `WATCHDOG_RECORD_PROBES`（默认关；开启后每次探活额外写入 `events` 审计表，
 与 dashboard 用的 `health_checks` 无关——后者始终落库）、
 `WATCHDOG_LEGACY_DEPLOY_DIR`（默认 `~/deployment`）、`WATCHDOG_SEED_FILE`、
