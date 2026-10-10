@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { buildContract } from "../src/contract.js";
+import { Store } from "../src/db.js";
 import { tmpConfig, tmpStore } from "./helpers.js";
 
 test("services round-trip through the store", () => {
@@ -29,6 +31,7 @@ test("services round-trip through the store", () => {
   assert.equal(got!.failureThreshold, 4);
   assert.equal(got!.source, "manual");
   assert.equal(got!.pinned, false);
+  assert.equal(got!.intervalSec, 30);
   assert.equal(store.listServices().length, 1);
 
   // update keeps createdAt but bumps updatedAt
@@ -93,4 +96,48 @@ test("remediation accounting supports cooldown and rate limiting", () => {
   const stats = store.stats();
   assert.equal(stats.services, 0);
   assert.equal(stats.remediations, 1);
+});
+
+test("opening an old store bumps the 10s factory default to 30s once", () => {
+  const config = tmpConfig();
+  let store = tmpStore(config);
+  store.upsertService(
+    buildContract(
+      {
+        serviceId: "legacy",
+        probeTarget: "http://127.0.0.1:1/health",
+        intervalSec: 10,
+      },
+      config,
+    ),
+  );
+  store.upsertService(
+    buildContract(
+      {
+        serviceId: "custom",
+        probeTarget: "http://127.0.0.1:2/health",
+        intervalSec: 45,
+      },
+      config,
+    ),
+  );
+  store.close();
+
+  const raw = new DatabaseSync(config.dbPath);
+  raw.exec("PRAGMA user_version = 0");
+  raw.close();
+
+  store = new Store(config.dbPath);
+  try {
+    assert.equal(store.getService("legacy")!.intervalSec, 30);
+    assert.equal(store.getService("custom")!.intervalSec, 45);
+    store.close();
+    store = new Store(config.dbPath);
+    store.upsertService({ ...store.getService("legacy")!, intervalSec: 10 });
+    store.close();
+    store = new Store(config.dbPath);
+    assert.equal(store.getService("legacy")!.intervalSec, 10);
+  } finally {
+    store.close();
+  }
 });

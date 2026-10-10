@@ -19,6 +19,7 @@ export function tmpConfig(prefix = "watchdog-test-"): Config {
   delete process.env.WATCHDOG_SYNC_BOOTSTRAP;
   delete process.env.WATCHDOG_SYNC_EXCLUDE;
   delete process.env.WATCHDOG_SYNC_INTERVAL_SEC;
+  delete process.env.WATCHDOG_DEFAULT_INTERVAL_SEC;
   delete process.env.WATCHDOG_SYNC_TIMEOUT_MS;
   return loadConfig();
 }

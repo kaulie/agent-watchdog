@@ -45,6 +45,16 @@ test("port falls back to WATCHDOG_PORT when SERVICE_PORT unset", () => {
   });
 });
 
+test("probe interval defaults to 30 seconds", () => {
+  tmpConfig();
+  withEnv({ WATCHDOG_DEFAULT_INTERVAL_SEC: undefined }, () => {
+    assert.equal(loadConfig().defaultIntervalSec, 30);
+  });
+  withEnv({ WATCHDOG_DEFAULT_INTERVAL_SEC: "15" }, () => {
+    assert.equal(loadConfig().defaultIntervalSec, 15);
+  });
+});
+
 test("sync allow defaults to the first-wave control-plane set", () => {
   tmpConfig();
   const cfg = loadConfig();

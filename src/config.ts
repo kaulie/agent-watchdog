@@ -55,6 +55,9 @@ export interface Config {
   syncBootstrap: string[];
 }
 
+/** Default probe cadence for new contracts (seconds). */
+export const DEFAULT_PROBE_INTERVAL_SEC = 30;
+
 /** First-wave services to supervise until deploy grows a `supervise` flag. */
 export const DEFAULT_SYNC_ALLOW = [
   "agent-control-plane",
@@ -138,7 +141,7 @@ export function loadConfig(): Config {
     logDir,
     pauseDir,
     tickMs: Math.max(250, envInt("WATCHDOG_TICK_MS", 1000)),
-    defaultIntervalSec: Math.max(2, envInt("WATCHDOG_DEFAULT_INTERVAL_SEC", 10)),
+    defaultIntervalSec: Math.max(2, envInt("WATCHDOG_DEFAULT_INTERVAL_SEC", DEFAULT_PROBE_INTERVAL_SEC)),
     defaultTimeoutMs: Math.max(500, envInt("WATCHDOG_DEFAULT_TIMEOUT_MS", 3000)),
     defaultFailureThreshold: Math.max(
       1,
