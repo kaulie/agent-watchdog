@@ -369,9 +369,9 @@ export class Store {
   // ---- remediations ------------------------------------------------------
 
   addRemediation(
-    input: Omit<RemediationRecord, "id" | "createdAt">,
+    input: Omit<RemediationRecord, "id" | "createdAt"> & { createdAt?: string },
   ): RemediationRecord {
-    const ts = nowIso();
+    const ts = input.createdAt ?? nowIso();
     const res = this.db
       .prepare(
         `INSERT INTO remediations (
@@ -402,21 +402,24 @@ export class Store {
     const rows = this.db
       .prepare(`SELECT * FROM remediations ${where} ORDER BY id DESC LIMIT ?`)
       .all(...params, limit) as Array<Record<string, unknown>>;
-    return rows.map((r) => ({
-      id: Number(r.id),
-      serviceId: String(r.service_id),
-      action: String(r.action) as RemediationRecord["action"],
-      command: String(r.command),
-      ok: bool(r.ok),
-      exitCode:
-        r.exit_code === null || r.exit_code === undefined
-          ? null
-          : Number(r.exit_code),
-      durationMs: Number(r.duration_ms),
-      trigger: String(r.trigger),
-      output: r.output ? String(r.output) : "",
-      createdAt: String(r.created_at),
-    }));
+    return rows.map(mapRemediation);
+  }
+
+  /** Dashboard 启停记录：`[from, to)` in epoch ms, newest first, 100 per page. */
+  remediationHistory(serviceId: string, from: number, to: number, before?: number) {
+    const fromIso = new Date(from).toISOString();
+    const toIso = new Date(to).toISOString();
+    const totalRow = this.db.prepare(`SELECT COUNT(*) AS n FROM remediations
+      WHERE service_id = ? AND created_at >= ? AND created_at < ?`)
+      .get(serviceId, fromIso, toIso) as { n: number } | undefined;
+    const rows = this.db.prepare(`SELECT * FROM remediations
+      WHERE service_id = ? AND created_at >= ? AND created_at < ? AND id < ?
+      ORDER BY id DESC LIMIT 101`).all(
+      serviceId, fromIso, toIso, before ?? Number.MAX_SAFE_INTEGER,
+    ) as Array<Record<string, unknown>>;
+    const events = rows.slice(0, 100).map(mapRemediation);
+    return {serviceId, from, to, total: Number(totalRow?.n ?? 0), events,
+      nextCursor: rows.length > 100 ? events.at(-1)!.id : null};
   }
 
   countRemediationsSince(serviceId: string, sinceIso: string): number {
@@ -518,6 +521,24 @@ export class Store {
       );
     return state;
   }
+}
+
+function mapRemediation(r: Record<string, unknown>): RemediationRecord {
+  return {
+    id: Number(r.id),
+    serviceId: String(r.service_id),
+    action: String(r.action) as RemediationRecord["action"],
+    command: String(r.command),
+    ok: bool(r.ok),
+    exitCode:
+      r.exit_code === null || r.exit_code === undefined
+        ? null
+        : Number(r.exit_code),
+    durationMs: Number(r.duration_ms),
+    trigger: String(r.trigger),
+    output: r.output ? String(r.output) : "",
+    createdAt: String(r.created_at),
+  };
 }
 
 function mapService(r: Record<string, unknown>): ServiceContract {

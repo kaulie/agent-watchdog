@@ -39,6 +39,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     endpoints: {
       dashboard: "GET /dashboard",
       healthHistory: "GET /api/services/:id/health-history?from=&to=&before=",
+      remediationHistory: "GET /api/services/:id/remediation-history?from=&to=&before=",
       health: "GET /health",
       services: "GET|POST /api/services, GET|PUT|DELETE /api/services/:id",
       state: "GET /api/state, GET /api/state/:id",
