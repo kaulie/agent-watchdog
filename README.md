@@ -146,7 +146,7 @@ npm run dev         # tsx watch
 打开 `/dashboard`，选择服务和最近 1 小时 / 24 小时 / 7 天 / 30 天。
 页面展示最新实际探测结果、24 个时间桶的可用率图表、逐次探测列表，以及 watchdog
 对该服务实际执行过的启停记录（start / restart / stop）；点击刷新更新窗口，
-每页 100 条，可加载更早记录。最新结果独立于历史筛选；超过两倍探测周期或超时预算
+每页 100 条；当前窗口不足 100 条时，只要库里还有更早记录，「加载更早记录」仍可往前翻。最新结果独立于历史筛选；超过两倍探测周期或超时预算
 （取较大值）标记过期，禁用服务明确标识，不将旧成功结果当作当前健康保证。
 
 **数据都存数据库。** Dashboard 上的 health check 结果全部来自本机 SQLite，打开页面
@@ -170,10 +170,10 @@ npm run dev         # tsx watch
 - 独立 SQLite `health_checks` 表在每次探测后写入（不受 `WATCHDOG_RECORD_PROBES` 控制），
   每 300 tick 清理 30 天以前记录；进程停止期间不清理。上线前没有历史，不从状态迁移反推。
 - `GET /api/services/:id/health-history?from=<ms>&to=<ms>&before=<id>`：
-  默认最近 24 小时，最大窗口 30 天；返回全窗口聚合、最新探测及 `events` / `nextCursor`。
-  `before` 只分页事件，不改变聚合；分页沿用同一窗口。非法参数 400，未知服务 404。
+  默认最近 24 小时，最大窗口 30 天；返回全窗口聚合、最新探测及 `events` / `nextCursor` / `hasOlder`。
+  `before` 只分页事件，不改变聚合；`hasOlder` 表示 `from` 之前还有探测。非法参数 400，未知服务 404。
 - `GET /api/services/:id/remediation-history?from=<ms>&to=<ms>&before=<id>`：
-  同一时间窗口与分页规则；返回该服务实际执行过的启停记录。
+  同一时间窗口与分页规则；返回该服务实际执行过的启停记录，同样带 `hasOlder`。
 - 保留原 `/` JSON 索引。页面无需前端依赖或外部 CDN，随 TypeScript 构建进入发布包。
 
 验证：`npm run typecheck && npm test && npm run build`；`test/dashboard.test.ts`

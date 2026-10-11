@@ -21,7 +21,9 @@ test('history isolates services, uses [from,to), counts raw results and empty bu
     assert.deepEqual(data.events.map((e: {ok:boolean}) => e.ok), [false,true]);
     assert.equal(data.events[0].error, 'unavailable'); assert.equal(data.events[0].status,503);
     assert.equal(data.events[0].latencyMs,12);
+    assert.equal(data.hasOlder, false);
     assert.equal((await app.inject('/api/services/b/health-history?from=1000&to=2000')).json().availability,100);
+    assert.equal((await app.inject('/api/services/a/health-history?from=3000&to=4000')).json().hasOlder, true);
     assert.equal((await app.inject('/api/services/a/health-history?from=3000&to=4000')).json().availability,null);
     for (const query of ['from=no','from=1&to=1','from=0&to=99999999999','before=-1','from=1.1&to=3']) {
       assert.equal((await app.inject('/api/services/a/health-history?'+query)).statusCode,400);
@@ -32,6 +34,9 @@ test('history isolates services, uses [from,to), counts raw results and empty bu
     assert.match(page.body,/逐次 health check/); assert.match(page.body,/textContent=value/);
     assert.match(page.body,/探测记录来自本机 SQLite/); assert.match(page.body,/不会现场探活/);
     assert.match(page.body,/启停记录/);
+    assert.match(page.body,/hasOlder/);
+    assert.match(page.body,/stepWin/);
+    assert.match(page.body,/id="more" hidden disabled/);
   } finally {await app.close();store.close();}
 });
 
@@ -51,6 +56,8 @@ test('remediation history isolates services, uses [from,to) and pages', async ()
     registerDashboard(app, store);
     const data = (await app.inject('/api/services/a/remediation-history?from=1000&to=2000')).json();
     assert.equal(data.total, 2);
+    assert.equal(data.hasOlder, false);
+    assert.equal((await app.inject('/api/services/a/remediation-history?from=2000&to=3000')).json().hasOlder, true);
     assert.deepEqual(data.events.map((e: {action:string}) => e.action), ['start','start']);
     assert.equal(data.events[0].ok, false);
     assert.equal(data.events[0].output, 'busy');
@@ -66,6 +73,19 @@ test('remediation history isolates services, uses [from,to) and pages', async ()
     const second=(await app.inject('/api/services/a/remediation-history?from=1000&to=2000&before='+first.nextCursor)).json();
     assert.equal(first.total, second.total); assert.ok(second.events.length>=1);
   } finally {await app.close();store.close();}
+});
+
+test('hasOlder stays true after the in-window page is exhausted', () => {
+  const store = tmpStore(tmpConfig());
+  try {
+    store.recordProbe('a',{ok:true,checkedAt:new Date(100).toISOString(),latencyMs:1});
+    for (let i=0;i<101;i++) store.recordProbe('a',{ok:true,checkedAt:new Date(1500).toISOString(),latencyMs:1});
+    const first=store.probeHistory('a',1000,2000);
+    assert.equal(first.events.length,100); assert.ok(first.nextCursor); assert.equal(first.hasOlder,true);
+    const rest=store.probeHistory('a',1000,2000,first.nextCursor!);
+    assert.equal(rest.nextCursor,null); assert.equal(rest.hasOlder,true); assert.equal(rest.total,101);
+    assert.equal(store.probeHistory('a',0,2000).hasOlder,false);
+  } finally {store.close();}
 });
 
 test('cursor pages every check once and does not change aggregate; time-based retention', () => {
