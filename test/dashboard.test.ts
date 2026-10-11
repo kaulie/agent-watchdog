@@ -31,6 +31,40 @@ test('history isolates services, uses [from,to), counts raw results and empty bu
     assert.match(page.headers['content-type']!, /text\/html/);
     assert.match(page.body,/逐次 health check/); assert.match(page.body,/textContent=value/);
     assert.match(page.body,/探测记录来自本机 SQLite/); assert.match(page.body,/不会现场探活/);
+    assert.match(page.body,/启停记录/);
+  } finally {await app.close();store.close();}
+});
+
+test('remediation history isolates services, uses [from,to) and pages', async () => {
+  const config = tmpConfig(), store = tmpStore(config), app = Fastify();
+  try {
+    store.upsertService(buildContract({serviceId:'a', probeTarget:'http://localhost/health'}, config));
+    store.upsertService(buildContract({serviceId:'b', probeTarget:'http://localhost/health'}, config));
+    store.addRemediation({serviceId:'a', action:'start', command:'bash start.sh', ok:true, exitCode:0,
+      durationMs:10, trigger:'threshold', output:'', createdAt:new Date(1500).toISOString()});
+    store.addRemediation({serviceId:'a', action:'start', command:'bash start.sh', ok:false, exitCode:1,
+      durationMs:21, trigger:'manual', output:'busy', createdAt:new Date(1800).toISOString()});
+    store.addRemediation({serviceId:'a', action:'restart', command:'bash restart.sh', ok:true, exitCode:0,
+      durationMs:22, trigger:'manual', output:'', createdAt:new Date(2500).toISOString()});
+    store.addRemediation({serviceId:'b', action:'stop', command:'bash stop.sh', ok:true, exitCode:0,
+      durationMs:5, trigger:'manual', output:'', createdAt:new Date(1600).toISOString()});
+    registerDashboard(app, store);
+    const data = (await app.inject('/api/services/a/remediation-history?from=1000&to=2000')).json();
+    assert.equal(data.total, 2);
+    assert.deepEqual(data.events.map((e: {action:string}) => e.action), ['start','start']);
+    assert.equal(data.events[0].ok, false);
+    assert.equal(data.events[0].output, 'busy');
+    assert.equal(data.events[1].trigger, 'threshold');
+    assert.equal((await app.inject('/api/services/b/remediation-history?from=1000&to=2000')).json().total, 1);
+    assert.equal((await app.inject('/api/services/a/remediation-history?from=2000&to=3000')).json().events[0].action, 'restart');
+    assert.equal((await app.inject('/api/services/missing/remediation-history')).statusCode, 404);
+    assert.equal((await app.inject('/api/services/a/remediation-history?from=1&to=1')).statusCode, 400);
+    for (let i=0;i<101;i++) store.addRemediation({serviceId:'a', action:'start', command:'x', ok:true, exitCode:0,
+      durationMs:1, trigger:'threshold', output:'', createdAt:new Date(1100).toISOString()});
+    const first=(await app.inject('/api/services/a/remediation-history?from=1000&to=2000')).json();
+    assert.equal(first.events.length,100); assert.ok(first.nextCursor);
+    const second=(await app.inject('/api/services/a/remediation-history?from=1000&to=2000&before='+first.nextCursor)).json();
+    assert.equal(first.total, second.total); assert.ok(second.events.length>=1);
   } finally {await app.close();store.close();}
 });
 

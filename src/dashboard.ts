@@ -20,6 +20,20 @@ export function registerDashboard(app: FastifyInstance, store: Store): void {
       return {...store.probeHistory(req.params.id, from, to, before),
         enabled: service.enabled, staleAfterMs: Math.max(service.intervalSec * 2000, service.probeTimeoutMs * 2)};
     });
+  app.get<{Params: {id: string}; Querystring: {from?: string; to?: string; before?: string}}>(
+    '/api/services/:id/remediation-history', async (req, reply) => {
+      const service = store.getService(req.params.id);
+      if (!service) return reply.code(404).send({error: 'service not found'});
+      const to = req.query.to === undefined ? Date.now() : Number(req.query.to);
+      const from = req.query.from === undefined ? to - 86400000 : Number(req.query.from);
+      const before = req.query.before === undefined ? undefined : Number(req.query.before);
+      if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || from >= to ||
+          to - from > 30 * 86400000 || (before !== undefined && (!Number.isSafeInteger(before) || before <= 0))) {
+        return reply.code(400).send({error: 'Use epoch milliseconds, from < to, maximum 30 days, and a positive integer cursor'});
+      }
+      reply.header('Cache-Control', 'no-store');
+      return store.remediationHistory(req.params.id, from, to, before);
+    });
 }
 
 const page = `<!doctype html>
@@ -41,11 +55,14 @@ button{cursor:pointer}button:disabled{opacity:.5;cursor:default}#metric{font-siz
 <div id="chart" role="img" aria-label="可用率图表"></div><div class="axis"><span id="start"></span><span>每柱 0–100% · 斜线为无数据</span><span id="end"></span></div></section>
 <section><h2>逐次 health check</h2><p>时间为浏览器本地时区，范围包含起点、不含终点。历史保留 30 天，上线前数据不回填。记录按写入顺序倒序。</p>
 <div class="table"><table><thead><tr><th>探测时间</th><th>结果</th><th>耗时</th><th>HTTP 状态</th><th>错误</th></tr></thead><tbody id="events"></tbody></table></div><p id="empty"></p><button id="more" disabled>加载更早记录</button></section>
+<section><h2>启停记录</h2><p>watchdog 实际执行过的 start / restart / stop。被 pause 或限流挡住的尝试不会出现。时间与上面同一窗口，按写入顺序倒序。</p>
+<div class="table"><table><thead><tr><th>时间</th><th>动作</th><th>触发</th><th>结果</th><th>耗时</th><th>退出码</th><th>命令</th><th>输出</th></tr></thead><tbody id="rems"></tbody></table></div><p id="rem-empty"></p><button id="rem-more" disabled>加载更早启停记录</button></section>
 </main><script>
-const el=id=>document.getElementById(id); let generation=0, windowRange, cursor=null;
+const el=id=>document.getElementById(id); let generation=0, windowRange, cursor=null, remCursor=null;
 const date=n=>new Date(n).toLocaleString(); const pct=n=>n===null?'无数据':n.toFixed(2)+'%';
+const action={start:'启动',restart:'重启',stop:'停止'}; const trigger={threshold:'探活阈值',manual:'手动'};
 async function json(url){const r=await fetch(url);if(!r.ok)throw new Error('请求失败 ('+r.status+')');return r.json();}
-function clear(){el('latest').textContent='';el('metric').textContent='—';el('counts').textContent='';el('chart').replaceChildren();el('events').replaceChildren();el('empty').textContent='';el('start').textContent='';el('end').textContent='';el('more').disabled=true;cursor=null;}
+function clear(){el('latest').textContent='';el('metric').textContent='—';el('counts').textContent='';el('chart').replaceChildren();el('events').replaceChildren();el('empty').textContent='';el('start').textContent='';el('end').textContent='';el('more').disabled=true;cursor=null;el('rems').replaceChildren();el('rem-empty').textContent='';el('rem-more').disabled=true;remCursor=null;}
 function render(data,append){
  if(!append){el('metric').textContent=pct(data.availability);el('counts').textContent=data.successful+' 次成功 / '+data.total+' 次探测';
  const last=data.latest;const stale=last&&Date.now()-last.checkedAt>data.staleAfterMs;
@@ -57,16 +74,34 @@ function render(data,append){
  for(const e of data.events){const tr=document.createElement('tr');for(const value of [date(e.checkedAt),e.ok?'健康':'失败',e.latencyMs+' ms',e.status??'—',e.error??'—']){const td=document.createElement('td');td.textContent=value;tr.append(td);}tr.children[1].className=e.ok?'good':'bad';el('events').append(tr);}
  el('empty').textContent=data.total?'':'此时间范围无探测数据';cursor=data.nextCursor;el('more').disabled=cursor===null;
 }
+function renderRems(data,append){
+ if(!append)el('rems').replaceChildren();
+ for(const e of data.events){const tr=document.createElement('tr');for(const value of [date(e.createdAt),action[e.action]||e.action,trigger[e.trigger]||e.trigger,e.ok?'成功':'失败',e.durationMs+' ms',e.exitCode??'—',e.command||'—',e.output||'—']){const td=document.createElement('td');td.textContent=value;tr.append(td);}tr.children[3].className=e.ok?'good':'bad';el('rems').append(tr);}
+ el('rem-empty').textContent=data.total?'':'此时间范围无启停干预';remCursor=data.nextCursor;el('rem-more').disabled=remCursor===null;
+}
 async function load(append=false){
  const token=append?generation:++generation;
  if(!append){clear();windowRange={to:Date.now()};windowRange.from=windowRange.to-Number(el('range').value)*3600000;}
  if(!el('service').value){el('message').textContent='暂无服务';return;}
- el('message').textContent='正在读取…';el('more').disabled=true;
+ el('message').textContent='正在读取…';el('more').disabled=true;if(!append)el('rem-more').disabled=true;
+ const id=encodeURIComponent(el('service').value);
  const q=new URLSearchParams({from:windowRange.from,to:windowRange.to});if(append&&cursor)q.set('before',cursor);
- try{const data=await json('/api/services/'+encodeURIComponent(el('service').value)+'/health-history?'+q);
- if(token!==generation)return;render(data,append);el('message').textContent='数据截至 '+date(windowRange.to)+' · 点击刷新获取最新探测';}
- catch(e){if(token===generation){el('message').textContent=e.message;el('more').disabled=cursor===null;}}
+ try{
+  const data=await json('/api/services/'+id+'/health-history?'+q);
+  if(token!==generation)return;render(data,append);
+  if(!append){const rem=await json('/api/services/'+id+'/remediation-history?'+new URLSearchParams({from:windowRange.from,to:windowRange.to}));
+   if(token!==generation)return;renderRems(rem,false);}
+  el('message').textContent='数据截至 '+date(windowRange.to)+' · 点击刷新获取最新探测';
+ }catch(e){if(token===generation){el('message').textContent=e.message;el('more').disabled=cursor===null;el('rem-more').disabled=remCursor===null;}}
 }
-el('service').onchange=()=>load();el('range').onchange=()=>load();el('refresh').onclick=()=>load();el('more').onclick=()=>load(true);
+async function loadRems(){
+ if(!el('service').value||!windowRange||!remCursor)return;
+ const token=generation;el('rem-more').disabled=true;
+ const q=new URLSearchParams({from:windowRange.from,to:windowRange.to,before:remCursor});
+ try{const rem=await json('/api/services/'+encodeURIComponent(el('service').value)+'/remediation-history?'+q);
+  if(token!==generation)return;renderRems(rem,true);}
+ catch(e){if(token===generation){el('message').textContent=e.message;el('rem-more').disabled=false;}}
+}
+el('service').onchange=()=>load();el('range').onchange=()=>load();el('refresh').onclick=()=>load();el('more').onclick=()=>load(true);el('rem-more').onclick=()=>loadRems();
 json('/api/services').then(data=>{for(const s of data.services){const option=document.createElement('option');option.value=s.contract.serviceId;option.textContent=s.contract.name+' ('+s.contract.serviceId+')'+(s.contract.enabled?'':' · 已禁用');el('service').append(option);}load();}).catch(e=>{el('message').textContent=e.message;});
 </script></body></html>`;

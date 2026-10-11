@@ -144,7 +144,8 @@ npm run dev         # tsx watch
 ### 服务健康 dashboard
 
 打开 `/dashboard`，选择服务和最近 1 小时 / 24 小时 / 7 天 / 30 天。
-页面展示最新实际探测结果、24 个时间桶的可用率图表及逐次探测列表；点击刷新更新窗口，
+页面展示最新实际探测结果、24 个时间桶的可用率图表、逐次探测列表，以及 watchdog
+对该服务实际执行过的启停记录（start / restart / stop）；点击刷新更新窗口，
 每页 100 条，可加载更早记录。最新结果独立于历史筛选；超过两倍探测周期或超时预算
 （取较大值）标记过期，禁用服务明确标识，不将旧成功结果当作当前健康保证。
 
@@ -154,6 +155,7 @@ npm run dev         # tsx watch
 | 页面内容 | 存哪 | 说明 |
 |---|---|---|
 | 最新探测、SLA 数字、24 柱图表、逐次列表 | `health_checks` | 每次定时或手动探测后立刻写入；保留 30 天 |
+| 启停记录 | `remediations` | 实际执行过的 start/restart/stop；被 pause/限流挡住的不写入 |
 | 服务名称、ID、是否启用 | `services` | 契约表；下拉框来自 `GET /api/services` |
 | 可用率百分比、24 个时间桶 | 不单独存一行 | 查询时从 `health_checks` 按窗口聚合 |
 | 「数据已过期」标记 | 不存 | 浏览器用当前时间对比最新 `checked_at` |
@@ -170,6 +172,8 @@ npm run dev         # tsx watch
 - `GET /api/services/:id/health-history?from=<ms>&to=<ms>&before=<id>`：
   默认最近 24 小时，最大窗口 30 天；返回全窗口聚合、最新探测及 `events` / `nextCursor`。
   `before` 只分页事件，不改变聚合；分页沿用同一窗口。非法参数 400，未知服务 404。
+- `GET /api/services/:id/remediation-history?from=<ms>&to=<ms>&before=<id>`：
+  同一时间窗口与分页规则；返回该服务实际执行过的启停记录。
 - 保留原 `/` JSON 索引。页面无需前端依赖或外部 CDN，随 TypeScript 构建进入发布包。
 
 验证：`npm run typecheck && npm test && npm run build`；`test/dashboard.test.ts`
@@ -189,6 +193,7 @@ npm run dev         # tsx watch
 | POST | `/api/services/:id/remediate` | 手动自愈（`{"action":"start\|restart\|stop"}`，默认取契约动作） |
 | GET | `/api/events` | 审计事件（`?serviceId=&type=&limit=`） |
 | GET | `/api/remediations` | 自愈历史（`?serviceId=&limit=`） |
+| GET | `/api/services/:id/remediation-history` | dashboard 启停记录（`?from=&to=&before=`） |
 | GET | `/api/pause` | 当前暂停快照（全局 + 各服务） |
 | POST | `/api/pause` | 暂停（`{"seconds":120,"reason":"deploy","serviceId":"web-cursor"?}`） |
 | DELETE | `/api/pause` | 恢复（`?serviceId=` 只恢复该服务，否则全局） |
