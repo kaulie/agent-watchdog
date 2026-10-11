@@ -63,9 +63,13 @@ export class Store {
       ORDER BY id DESC LIMIT 101`).all(serviceId, from, to, before ?? Number.MAX_SAFE_INTEGER) as
       Array<{id: number; checkedAt: number; ok: number; latencyMs: number; status: number | null; error: string | null}>;
     const events = rows.slice(0, 100).map(r => ({...r, ok: r.ok === 1}));
+    const older = this.db.prepare(
+      'SELECT 1 AS ok FROM health_checks WHERE service_id = ? AND checked_at < ? LIMIT 1')
+      .get(serviceId, from) as {ok: number} | undefined;
     return {serviceId, from, to, latest: latest ? {...latest, ok: latest.ok === 1} : null,
       total, successful, availability: total ? successful / total * 100 : null,
-      buckets, events, nextCursor: rows.length > 100 ? events.at(-1)!.id : null};
+      buckets, events, nextCursor: rows.length > 100 ? events.at(-1)!.id : null,
+      hasOlder: !!older};
   }
 
   constructor(dbPath: string) {
@@ -418,8 +422,11 @@ export class Store {
       serviceId, fromIso, toIso, before ?? Number.MAX_SAFE_INTEGER,
     ) as Array<Record<string, unknown>>;
     const events = rows.slice(0, 100).map(mapRemediation);
+    const older = this.db.prepare(
+      'SELECT 1 AS ok FROM remediations WHERE service_id = ? AND created_at < ? LIMIT 1')
+      .get(serviceId, fromIso) as {ok: number} | undefined;
     return {serviceId, from, to, total: Number(totalRow?.n ?? 0), events,
-      nextCursor: rows.length > 100 ? events.at(-1)!.id : null};
+      nextCursor: rows.length > 100 ? events.at(-1)!.id : null, hasOlder: !!older};
   }
 
   countRemediationsSince(serviceId: string, sinceIso: string): number {

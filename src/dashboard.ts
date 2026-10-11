@@ -53,16 +53,19 @@ button{cursor:pointer}button:disabled{opacity:.5;cursor:default}#metric{font-siz
 <section><h2>可用性 SLA · 探测样本</h2><div id="metric">—</div><p id="counts"></p>
 <p>成功探测数 ÷ 总探测数；不是按时长加权的 SLA。包括手动探测，不使用状态机的滞回结果。无样本不代表健康。</p>
 <div id="chart" role="img" aria-label="可用率图表"></div><div class="axis"><span id="start"></span><span>每柱 0–100% · 斜线为无数据</span><span id="end"></span></div></section>
-<section><h2>逐次 health check</h2><p>时间为浏览器本地时区，范围包含起点、不含终点。历史保留 30 天，上线前数据不回填。记录按写入顺序倒序。</p>
-<div class="table"><table><thead><tr><th>探测时间</th><th>结果</th><th>耗时</th><th>HTTP 状态</th><th>错误</th></tr></thead><tbody id="events"></tbody></table></div><p id="empty"></p><button id="more" disabled>加载更早记录</button></section>
+<section><h2>逐次 health check</h2><p>时间为浏览器本地时区，范围包含起点、不含终点。历史保留 30 天，上线前数据不回填。记录按写入顺序倒序。图表对应所选时间范围；库里还有更早探测时，「加载更早记录」可继续往前翻，不会因为本页不足 100 条就灰掉。</p>
+<div class="table"><table><thead><tr><th>探测时间</th><th>结果</th><th>耗时</th><th>HTTP 状态</th><th>错误</th></tr></thead><tbody id="events"></tbody></table></div><p id="empty"></p><button id="more" hidden disabled>加载更早记录</button></section>
 <section><h2>启停记录</h2><p>watchdog 实际执行过的 start / restart / stop。被 pause 或限流挡住的尝试不会出现。时间与上面同一窗口，按写入顺序倒序。</p>
-<div class="table"><table><thead><tr><th>时间</th><th>动作</th><th>触发</th><th>结果</th><th>耗时</th><th>退出码</th><th>命令</th><th>输出</th></tr></thead><tbody id="rems"></tbody></table></div><p id="rem-empty"></p><button id="rem-more" disabled>加载更早启停记录</button></section>
+<div class="table"><table><thead><tr><th>时间</th><th>动作</th><th>触发</th><th>结果</th><th>耗时</th><th>退出码</th><th>命令</th><th>输出</th></tr></thead><tbody id="rems"></tbody></table></div><p id="rem-empty"></p><button id="rem-more" hidden disabled>加载更早启停记录</button></section>
 </main><script>
-const el=id=>document.getElementById(id); let generation=0, windowRange, cursor=null, remCursor=null;
+const el=id=>document.getElementById(id); let generation=0,healthWin,remWin,viewTo,cursor=null,remCursor=null,hasOlder=false,remHasOlder=false;
 const date=n=>new Date(n).toLocaleString(); const pct=n=>n===null?'无数据':n.toFixed(2)+'%';
 const action={start:'启动',restart:'重启',stop:'停止'}; const trigger={threshold:'探活阈值',manual:'手动'};
+const rangeMs=()=>Number(el('range').value)*3600000;
+function moreBtn(id,can){const b=el(id);b.hidden=!can;b.disabled=!can;}
+function stepWin(win){const to=win.from,from=Math.max(0,to-(win.to-win.from));return from<to?{from,to}:null;}
 async function json(url){const r=await fetch(url);if(!r.ok)throw new Error('请求失败 ('+r.status+')');return r.json();}
-function clear(){el('latest').textContent='';el('metric').textContent='—';el('counts').textContent='';el('chart').replaceChildren();el('events').replaceChildren();el('empty').textContent='';el('start').textContent='';el('end').textContent='';el('more').disabled=true;cursor=null;el('rems').replaceChildren();el('rem-empty').textContent='';el('rem-more').disabled=true;remCursor=null;}
+function clear(){el('latest').textContent='';el('metric').textContent='—';el('counts').textContent='';el('chart').replaceChildren();el('events').replaceChildren();el('empty').textContent='';el('start').textContent='';el('end').textContent='';moreBtn('more',false);cursor=null;hasOlder=false;el('rems').replaceChildren();el('rem-empty').textContent='';moreBtn('rem-more',false);remCursor=null;remHasOlder=false;}
 function render(data,append){
  if(!append){el('metric').textContent=pct(data.availability);el('counts').textContent=data.successful+' 次成功 / '+data.total+' 次探测';
  const last=data.latest;const stale=last&&Date.now()-last.checkedAt>data.staleAfterMs;
@@ -70,37 +73,43 @@ function render(data,append){
  el('start').textContent=date(data.from);el('end').textContent=date(data.to);
  for(const b of data.buckets){const col=document.createElement('div');col.className='bucket'+(b.total?'':' empty');col.title=date(b.from)+' – '+date(b.to)+': '+pct(b.availability)+' ('+b.successful+'/'+b.total+')';
  if(b.total){const bar=document.createElement('div');bar.className='bar';bar.style.height=b.availability+'%';col.append(bar);}el('chart').append(col);}
- el('chart').setAttribute('aria-label','可用率 '+pct(data.availability)+'，24 个等宽时间区间；悬停查看详情');}
+ el('chart').setAttribute('aria-label','可用率 '+pct(data.availability)+'，24 个等宽时间区间；悬停查看详情');
+ el('empty').textContent=data.total?'':'此时间范围无探测数据';}
+ else if(!data.events.length)el('empty').textContent='没有更早的记录';
  for(const e of data.events){const tr=document.createElement('tr');for(const value of [date(e.checkedAt),e.ok?'健康':'失败',e.latencyMs+' ms',e.status??'—',e.error??'—']){const td=document.createElement('td');td.textContent=value;tr.append(td);}tr.children[1].className=e.ok?'good':'bad';el('events').append(tr);}
- el('empty').textContent=data.total?'':'此时间范围无探测数据';cursor=data.nextCursor;el('more').disabled=cursor===null;
+ cursor=data.nextCursor;hasOlder=!!data.hasOlder;moreBtn('more',cursor!==null||hasOlder);
 }
 function renderRems(data,append){
- if(!append)el('rems').replaceChildren();
+ if(!append){el('rems').replaceChildren();el('rem-empty').textContent=data.total?'':'此时间范围无启停干预';}
+ else if(!data.events.length)el('rem-empty').textContent='没有更早的启停记录';
  for(const e of data.events){const tr=document.createElement('tr');for(const value of [date(e.createdAt),action[e.action]||e.action,trigger[e.trigger]||e.trigger,e.ok?'成功':'失败',e.durationMs+' ms',e.exitCode??'—',e.command||'—',e.output||'—']){const td=document.createElement('td');td.textContent=value;tr.append(td);}tr.children[3].className=e.ok?'good':'bad';el('rems').append(tr);}
- el('rem-empty').textContent=data.total?'':'此时间范围无启停干预';remCursor=data.nextCursor;el('rem-more').disabled=remCursor===null;
+ remCursor=data.nextCursor;remHasOlder=!!data.hasOlder;moreBtn('rem-more',remCursor!==null||remHasOlder);
 }
 async function load(append=false){
  const token=append?generation:++generation;
- if(!append){clear();windowRange={to:Date.now()};windowRange.from=windowRange.to-Number(el('range').value)*3600000;}
+ if(!append){clear();viewTo=Date.now();healthWin={to:viewTo,from:viewTo-rangeMs()};remWin={from:healthWin.from,to:healthWin.to};}
+ else if(!cursor){const next=stepWin(healthWin);if(!next){moreBtn('more',false);return;}healthWin=next;}
  if(!el('service').value){el('message').textContent='暂无服务';return;}
- el('message').textContent='正在读取…';el('more').disabled=true;if(!append)el('rem-more').disabled=true;
+ el('message').textContent='正在读取…';moreBtn('more',false);if(!append)moreBtn('rem-more',false);
  const id=encodeURIComponent(el('service').value);
- const q=new URLSearchParams({from:windowRange.from,to:windowRange.to});if(append&&cursor)q.set('before',cursor);
+ const q=new URLSearchParams({from:healthWin.from,to:healthWin.to});if(append&&cursor)q.set('before',cursor);
  try{
   const data=await json('/api/services/'+id+'/health-history?'+q);
   if(token!==generation)return;render(data,append);
-  if(!append){const rem=await json('/api/services/'+id+'/remediation-history?'+new URLSearchParams({from:windowRange.from,to:windowRange.to}));
+  if(!append){const rem=await json('/api/services/'+id+'/remediation-history?'+new URLSearchParams({from:remWin.from,to:remWin.to}));
    if(token!==generation)return;renderRems(rem,false);}
-  el('message').textContent='数据截至 '+date(windowRange.to)+' · 点击刷新获取最新探测';
- }catch(e){if(token===generation){el('message').textContent=e.message;el('more').disabled=cursor===null;el('rem-more').disabled=remCursor===null;}}
+  el('message').textContent='数据截至 '+date(viewTo)+' · 点击刷新获取最新探测';
+ }catch(e){if(token===generation){el('message').textContent=e.message;moreBtn('more',cursor!==null||hasOlder);moreBtn('rem-more',remCursor!==null||remHasOlder);}}
 }
 async function loadRems(){
- if(!el('service').value||!windowRange||!remCursor)return;
- const token=generation;el('rem-more').disabled=true;
- const q=new URLSearchParams({from:windowRange.from,to:windowRange.to,before:remCursor});
+ if(!el('service').value||!remWin)return;
+ let before=remCursor;
+ if(!before){const next=stepWin(remWin);if(!next){moreBtn('rem-more',false);return;}remWin=next;}
+ const token=generation;moreBtn('rem-more',false);
+ const q=new URLSearchParams({from:remWin.from,to:remWin.to});if(before)q.set('before',before);
  try{const rem=await json('/api/services/'+encodeURIComponent(el('service').value)+'/remediation-history?'+q);
   if(token!==generation)return;renderRems(rem,true);}
- catch(e){if(token===generation){el('message').textContent=e.message;el('rem-more').disabled=false;}}
+ catch(e){if(token===generation){el('message').textContent=e.message;moreBtn('rem-more',true);}}
 }
 el('service').onchange=()=>load();el('range').onchange=()=>load();el('refresh').onclick=()=>load();el('more').onclick=()=>load(true);el('rem-more').onclick=()=>loadRems();
 json('/api/services').then(data=>{for(const s of data.services){const option=document.createElement('option');option.value=s.contract.serviceId;option.textContent=s.contract.name+' ('+s.contract.serviceId+')'+(s.contract.enabled?'':' · 已禁用');el('service').append(option);}load();}).catch(e=>{el('message').textContent=e.message;});
